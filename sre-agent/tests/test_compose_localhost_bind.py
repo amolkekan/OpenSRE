@@ -55,6 +55,7 @@ def test_compose_secrets_use_required_env_substitution():
 
     assert "POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env" in config_env["DATABASE_URL"]
     assert config_env["ADMIN_TOKEN"] == "${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}"
+    assert config_env["TOKEN_PEPPER"] == "${TOKEN_PEPPER:?set TOKEN_PEPPER in .env}"
     assert (
         config_env["IMPERSONATION_JWT_SECRET"]
         == "${IMPERSONATION_JWT_SECRET:?set IMPERSONATION_JWT_SECRET in .env}"
@@ -62,3 +63,8 @@ def test_compose_secrets_use_required_env_substitution():
 
     neo4j_auth = compose["services"]["neo4j"]["environment"]["NEO4J_AUTH"]
     assert "NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env" in neo4j_auth
+
+    agent_env = compose["services"]["sre-agent"]["environment"]
+    assert any(
+        "NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env" in str(item) for item in agent_env
+    ), agent_env
