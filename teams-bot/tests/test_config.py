@@ -7,6 +7,9 @@ def _reload_config(monkeypatch, **env):
         "TEAMS_APP_ID",
         "TEAMS_APP_PASSWORD",
         "TEAMS_TENANT_ID",
+        "TEAMS_AUTHZ_MODE",
+        "TEAMS_ALLOWED_USER_IDS",
+        "TEAMS_ALLOWED_UPNS",
         "CLIENT_ID",
         "CLIENT_SECRET",
         "TENANT_ID",
@@ -57,3 +60,30 @@ def test_config_not_configured_without_app_id(monkeypatch):
     )
     cfg = config.Config()
     assert cfg.is_configured() is False
+
+
+def test_authz_open_mode_allows_anyone(monkeypatch):
+    config = _reload_config(monkeypatch, TEAMS_AUTHZ_MODE="open")
+    cfg = config.Config()
+    assert cfg.is_user_authorized(user_id=None, upn=None) is True
+
+
+def test_authz_empty_allowlist_denies(monkeypatch):
+    config = _reload_config(monkeypatch, TEAMS_AUTHZ_MODE="allowlist")
+    cfg = config.Config()
+    assert cfg.is_user_authorized(user_id="user-1", upn="alice@example.com") is False
+
+
+def test_authz_allowlist_matches_user_id_and_upn(monkeypatch):
+    config = _reload_config(
+        monkeypatch,
+        TEAMS_AUTHZ_MODE="allowlist",
+        TEAMS_ALLOWED_USER_IDS="User-ABC, user-def",
+        TEAMS_ALLOWED_UPNS="Bob@Example.COM",
+    )
+    cfg = config.Config()
+    assert cfg.is_user_authorized(user_id="user-abc", upn=None) is True
+    assert cfg.is_user_authorized(user_id="user-def", upn=None) is True
+    assert cfg.is_user_authorized(user_id=None, upn="bob@example.com") is True
+    assert cfg.is_user_authorized(user_id="other", upn="bob@example.com") is True
+    assert cfg.is_user_authorized(user_id="other", upn="eve@example.com") is False

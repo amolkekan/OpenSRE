@@ -14,6 +14,9 @@ Set these in the repo root `.env` (see `env.example`):
 | `TEAMS_APP_ID` | Entra / Azure Bot application (client) ID |
 | `TEAMS_APP_PASSWORD` | Client secret |
 | `TEAMS_TENANT_ID` | Azure AD tenant ID |
+| `TEAMS_AUTHZ_MODE` | `allowlist` (default) or `open` (local dev — allow all) |
+| `TEAMS_ALLOWED_USER_IDS` | Comma-separated AAD object IDs allowed to investigate |
+| `TEAMS_ALLOWED_UPNS` | Comma-separated user principal names allowed to investigate |
 | `SRE_AGENT_URL` | sre-agent base URL (default `http://localhost:8000`) |
 | `INVESTIGATE_AUTH_TOKEN` | Bearer token for `/investigate` and `/answer` |
 | `PORT` | HTTP listen port (default `3978`) |

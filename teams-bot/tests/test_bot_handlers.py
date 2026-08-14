@@ -2,10 +2,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bot_handlers import (
+    UNAUTHORIZED_REPLY,
     is_azure_webchat,
     is_direct_bot_chat,
     is_personal_chat,
+    is_sender_authorized,
     register_handlers,
+    resolve_sender_identity,
     should_handle_message,
     strip_bot_mention,
 )
@@ -176,3 +179,135 @@ async def test_on_message_queue_409_starts_follow_up_investigation():
         ctx.send.assert_not_awaited()
     finally:
         active_investigations.discard(thread_id)
+
+
+def _register_on_message_handler():
+    on_message_handler = None
+    on_submit_handler = None
+
+    class FakeApp:
+        def on_message(self, fn):
+            nonlocal on_message_handler
+            on_message_handler = fn
+            return fn
+
+        def on_card_action_execute(self, _verb):
+            def decorator(fn):
+                nonlocal on_submit_handler
+                on_submit_handler = fn
+                return fn
+
+            return decorator
+
+    register_handlers(FakeApp())
+    return on_message_handler, on_submit_handler
+
+
+def _personal_activity(*, text: str, user_id: str = "user-allowed", upn: str = ""):
+    activity = MagicMock()
+    activity.text = text
+    activity.entities = []
+    activity.conversation = MagicMock(
+        id="19:auth@thread.tacv2",
+        conversation_type="personal",
+        conversationType=None,
+    )
+    activity.channel_id = None
+    activity.channelId = None
+    activity.from_ = MagicMock(
+        id=user_id,
+        aadObjectId=user_id,
+        userPrincipalName=upn or None,
+        properties={},
+    )
+    return activity
+
+
+@pytest.mark.asyncio
+async def test_on_message_denied_when_not_on_allowlist(monkeypatch):
+    monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "other-user")
+
+    on_message_handler, _ = _register_on_message_handler()
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    ctx.activity = _personal_activity(text="check pods", user_id="blocked-user")
+
+    with patch("bot_handlers.run_investigation", new_callable=AsyncMock) as mock_run:
+        await on_message_handler(ctx)
+
+    mock_run.assert_not_awaited()
+    ctx.send.assert_awaited_once()
+    assert ctx.send.await_args.args[0].text == UNAUTHORIZED_REPLY
+
+
+@pytest.mark.asyncio
+async def test_on_message_allowed_when_user_id_on_allowlist(monkeypatch):
+    monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowed-user")
+
+    on_message_handler, _ = _register_on_message_handler()
+    ctx = MagicMock()
+    ctx.send = AsyncMock(return_value=MagicMock(id="act-1"))
+    ctx.stream = MagicMock()
+    ctx.stream.update = MagicMock()
+    ctx.stream.close = MagicMock()
+    ctx.activity = _personal_activity(text="check pods", user_id="allowed-user")
+
+    with patch("bot_handlers.run_investigation", new_callable=AsyncMock) as mock_run:
+        await on_message_handler(ctx)
+
+    mock_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_on_submit_denied_when_not_on_allowlist(monkeypatch):
+    monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
+    monkeypatch.setenv("TEAMS_ALLOWED_UPNS", "allowed@example.com")
+
+    _, on_submit_handler = _register_on_message_handler()
+    ctx = MagicMock()
+    ctx.activity = _personal_activity(text="", user_id="user-1", upn="blocked@example.com")
+    ctx.activity.value = MagicMock(action=MagicMock(data={"answer_thread_id": "teams-x"}))
+
+    with patch("bot_handlers.submit_answers", new_callable=AsyncMock) as mock_submit:
+        response = await on_submit_handler(ctx)
+
+    mock_submit.assert_not_awaited()
+    assert response.value == UNAUTHORIZED_REPLY
+
+
+@pytest.mark.asyncio
+async def test_on_submit_allowed_when_upn_on_allowlist(monkeypatch):
+    monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
+    monkeypatch.setenv("TEAMS_ALLOWED_UPNS", "allowed@example.com")
+
+    _, on_submit_handler = _register_on_message_handler()
+    ctx = MagicMock()
+    ctx.activity = _personal_activity(
+        text="", user_id="user-1", upn="allowed@example.com"
+    )
+    ctx.activity.value = MagicMock(action=MagicMock(data={"answer_thread_id": "teams-x"}))
+
+    with patch("bot_handlers.submit_answers", new_callable=AsyncMock) as mock_submit:
+        response = await on_submit_handler(ctx)
+
+    mock_submit.assert_awaited_once_with(thread_id="teams-x", answers={})
+    assert response.value == "Answer submitted"
+
+
+def test_resolve_sender_identity_prefers_aad_object_id():
+    activity = MagicMock()
+    activity.from_ = MagicMock(
+        id="teams-id",
+        aadObjectId="aad-object-id",
+        userPrincipalName="alice@example.com",
+        properties={},
+    )
+    assert resolve_sender_identity(activity) == ("aad-object-id", "alice@example.com")
+
+
+def test_is_sender_authorized_open_mode(monkeypatch):
+    monkeypatch.setenv("TEAMS_AUTHZ_MODE", "open")
+    activity = _personal_activity(text="hi", user_id="anyone")
+    assert is_sender_authorized(activity) is True

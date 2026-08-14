@@ -6,6 +6,7 @@ from typing import Any
 
 import aiohttp
 from card_builder import build_welcome_card
+from config import Config
 from investigation_runner import (
     queue_message,
     run_investigation,
@@ -18,6 +19,9 @@ from state import active_investigations, pending_questions
 logger = logging.getLogger(__name__)
 
 SUBMIT_VERB = "opensre.submit_answers"
+UNAUTHORIZED_REPLY = (
+    "You are not authorized to use OpenSRE. Contact your administrator."
+)
 
 
 def is_personal_chat(conversation_type: str | None) -> bool:
@@ -53,6 +57,40 @@ def strip_bot_mention(text: str, bot_name: str = "OpenSRE") -> str:
     return cleaned.strip()
 
 
+def resolve_sender_identity(activity: Any) -> tuple[str | None, str | None]:
+    """Extract AAD object id / Teams user id and UPN from activity.from."""
+
+    def _first_str(*values: Any) -> str | None:
+        for value in values:
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    sender = getattr(activity, "from_", None) or getattr(activity, "from", None)
+    if sender is None:
+        return None, None
+
+    user_id = _first_str(
+        getattr(sender, "aad_object_id", None),
+        getattr(sender, "aadObjectId", None),
+        getattr(sender, "id", None),
+    )
+    upn = _first_str(
+        getattr(sender, "user_principal_name", None),
+        getattr(sender, "userPrincipalName", None),
+    )
+    if not upn:
+        props = getattr(sender, "properties", None) or {}
+        if isinstance(props, dict):
+            upn = _first_str(props.get("email"), props.get("userPrincipalName"))
+    return user_id, upn
+
+
+def is_sender_authorized(activity: Any) -> bool:
+    user_id, upn = resolve_sender_identity(activity)
+    return Config().is_user_authorized(user_id=user_id, upn=upn)
+
+
 def _dict_to_adaptive_card(card: dict):
     # SDK MessageActivityInput.add_card() requires typed AdaptiveCard, not raw dict.
     from microsoft_teams.cards.core import AdaptiveCard
@@ -82,6 +120,10 @@ def register_handlers(app) -> None:
             conversation_type=conv_type,
             channel_id=channel_id,
         ):
+            return
+
+        if not is_sender_authorized(activity):
+            await ctx.send(MessageActivityInput().add_text(UNAUTHORIZED_REPLY))
             return
 
         cleaned = strip_bot_mention(text)
@@ -157,6 +199,9 @@ def register_handlers(app) -> None:
 
     @app.on_card_action_execute(SUBMIT_VERB)
     async def on_submit(ctx):
+        if not is_sender_authorized(ctx.activity):
+            return _ok_response(UNAUTHORIZED_REPLY)
+
         flat = _flatten_card_action_data(ctx.activity)
         thread_id = flat.get("answer_thread_id")
         questions = pending_questions.get(thread_id or "", [])

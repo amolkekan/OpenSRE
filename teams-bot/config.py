@@ -7,6 +7,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# allowlist (default): only TEAMS_ALLOWED_USER_IDS / TEAMS_ALLOWED_UPNS may act;
+# empty allowlist denies everyone. open: local-dev escape hatch (allow all).
+VALID_AUTHZ_MODES = frozenset({"allowlist", "open"})
+
+
+def _parse_csv_set(value: str) -> frozenset[str]:
+    return frozenset(
+        item.strip().lower() for item in (value or "").split(",") if item.strip()
+    )
+
 
 def _export_sdk_env(app_id: str, password: str, tenant_id: str) -> None:
     """Map OpenSRE TEAMS_* names to Teams SDK CLIENT_* env vars."""
@@ -32,6 +42,26 @@ class Config:
         _export_sdk_env(
             self.TEAMS_APP_ID, self.TEAMS_APP_PASSWORD, self.TEAMS_TENANT_ID
         )
+        mode = os.environ.get("TEAMS_AUTHZ_MODE", "allowlist").strip().lower()
+        self.authz_mode = mode if mode in VALID_AUTHZ_MODES else "allowlist"
+        self.allowed_user_ids = _parse_csv_set(
+            os.environ.get("TEAMS_ALLOWED_USER_IDS", "")
+        )
+        self.allowed_upns = _parse_csv_set(os.environ.get("TEAMS_ALLOWED_UPNS", ""))
+
+    def is_user_authorized(self, *, user_id: str | None, upn: str | None) -> bool:
+        """Return True when the sender may start investigations or submit answers."""
+        if self.authz_mode == "open":
+            return True
+        if not self.allowed_user_ids and not self.allowed_upns:
+            return False
+        uid = (user_id or "").strip().lower()
+        normalized_upn = (upn or "").strip().lower()
+        if uid and uid in self.allowed_user_ids:
+            return True
+        if normalized_upn and normalized_upn in self.allowed_upns:
+            return True
+        return False
 
     def is_configured(self) -> bool:
         return bool(
