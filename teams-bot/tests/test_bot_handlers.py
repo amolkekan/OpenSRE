@@ -8,7 +8,7 @@ from bot_handlers import (
     is_personal_chat,
     is_sender_authorized,
     register_handlers,
-    resolve_sender_identity,
+    resolve_sender_aad_object_id,
     should_handle_message,
     strip_bot_mention,
 )
@@ -203,7 +203,12 @@ def _register_on_message_handler():
     return on_message_handler, on_submit_handler
 
 
-def _personal_activity(*, text: str, user_id: str = "user-allowed", upn: str = ""):
+def _personal_activity(
+    *,
+    text: str,
+    teams_user_id: str = "29:teams-user",
+    aad_object_id: str | None = "aad-allowed",
+):
     activity = MagicMock()
     activity.text = text
     activity.entities = []
@@ -215,9 +220,9 @@ def _personal_activity(*, text: str, user_id: str = "user-allowed", upn: str = "
     activity.channel_id = None
     activity.channelId = None
     activity.from_ = MagicMock(
-        id=user_id,
-        aadObjectId=user_id,
-        userPrincipalName=upn or None,
+        id=teams_user_id,
+        aadObjectId=aad_object_id,
+        aad_object_id=aad_object_id,
         properties={},
     )
     return activity
@@ -226,12 +231,16 @@ def _personal_activity(*, text: str, user_id: str = "user-allowed", upn: str = "
 @pytest.mark.asyncio
 async def test_on_message_denied_when_not_on_allowlist(monkeypatch):
     monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
-    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "other-user")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowed-aad")
 
     on_message_handler, _ = _register_on_message_handler()
     ctx = MagicMock()
     ctx.send = AsyncMock()
-    ctx.activity = _personal_activity(text="check pods", user_id="blocked-user")
+    ctx.activity = _personal_activity(
+        text="check pods",
+        teams_user_id="29:blocked",
+        aad_object_id="blocked-aad",
+    )
 
     with patch("bot_handlers.run_investigation", new_callable=AsyncMock) as mock_run:
         await on_message_handler(ctx)
@@ -244,7 +253,7 @@ async def test_on_message_denied_when_not_on_allowlist(monkeypatch):
 @pytest.mark.asyncio
 async def test_on_message_allowed_when_user_id_on_allowlist(monkeypatch):
     monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
-    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowed-user")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowed-aad")
 
     on_message_handler, _ = _register_on_message_handler()
     ctx = MagicMock()
@@ -252,7 +261,11 @@ async def test_on_message_allowed_when_user_id_on_allowlist(monkeypatch):
     ctx.stream = MagicMock()
     ctx.stream.update = MagicMock()
     ctx.stream.close = MagicMock()
-    ctx.activity = _personal_activity(text="check pods", user_id="allowed-user")
+    ctx.activity = _personal_activity(
+        text="check pods",
+        teams_user_id="29:allowed",
+        aad_object_id="allowed-aad",
+    )
 
     with patch("bot_handlers.run_investigation", new_callable=AsyncMock) as mock_run:
         await on_message_handler(ctx)
@@ -263,11 +276,15 @@ async def test_on_message_allowed_when_user_id_on_allowlist(monkeypatch):
 @pytest.mark.asyncio
 async def test_on_submit_denied_when_not_on_allowlist(monkeypatch):
     monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
-    monkeypatch.setenv("TEAMS_ALLOWED_UPNS", "allowed@example.com")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowed-aad")
 
     _, on_submit_handler = _register_on_message_handler()
     ctx = MagicMock()
-    ctx.activity = _personal_activity(text="", user_id="user-1", upn="blocked@example.com")
+    ctx.activity = _personal_activity(
+        text="",
+        teams_user_id="29:other",
+        aad_object_id="blocked-aad",
+    )
     ctx.activity.value = MagicMock(action=MagicMock(data={"answer_thread_id": "teams-x"}))
 
     with patch("bot_handlers.submit_answers", new_callable=AsyncMock) as mock_submit:
@@ -278,14 +295,16 @@ async def test_on_submit_denied_when_not_on_allowlist(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_on_submit_allowed_when_upn_on_allowlist(monkeypatch):
+async def test_on_submit_allowed_when_aad_object_id_on_allowlist(monkeypatch):
     monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
-    monkeypatch.setenv("TEAMS_ALLOWED_UPNS", "allowed@example.com")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowed-aad")
 
     _, on_submit_handler = _register_on_message_handler()
     ctx = MagicMock()
     ctx.activity = _personal_activity(
-        text="", user_id="user-1", upn="allowed@example.com"
+        text="",
+        teams_user_id="29:allowed",
+        aad_object_id="allowed-aad",
     )
     ctx.activity.value = MagicMock(action=MagicMock(data={"answer_thread_id": "teams-x"}))
 
@@ -296,18 +315,51 @@ async def test_on_submit_allowed_when_upn_on_allowlist(monkeypatch):
     assert response.value == "Answer submitted"
 
 
-def test_resolve_sender_identity_prefers_aad_object_id():
+def test_resolve_sender_aad_object_id_reads_typed_account_field():
     activity = MagicMock()
     activity.from_ = MagicMock(
-        id="teams-id",
+        id="29:teams-user",
         aadObjectId="aad-object-id",
-        userPrincipalName="alice@example.com",
         properties={},
     )
-    assert resolve_sender_identity(activity) == ("aad-object-id", "alice@example.com")
+    assert resolve_sender_aad_object_id(activity) == "aad-object-id"
+
+
+def test_resolve_sender_aad_object_id_ignores_spoofable_from_id():
+    activity = MagicMock()
+    activity.from_ = MagicMock(
+        id="allowlisted-but-spoofed",
+        aadObjectId=None,
+        aad_object_id=None,
+        properties={"email": "alice@example.com", "userPrincipalName": "alice@example.com"},
+    )
+    assert resolve_sender_aad_object_id(activity) is None
+
+
+@pytest.mark.asyncio
+async def test_on_message_denied_when_webchat_spoofs_from_id(monkeypatch):
+    monkeypatch.setenv("TEAMS_AUTHZ_MODE", "allowlist")
+    monkeypatch.setenv("TEAMS_ALLOWED_USER_IDS", "allowlisted-aad")
+
+    on_message_handler, _ = _register_on_message_handler()
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    ctx.activity = _personal_activity(
+        text="check pods",
+        teams_user_id="allowlisted-aad",
+        aad_object_id=None,
+    )
+    ctx.activity.channel_id = "webchat"
+
+    with patch("bot_handlers.run_investigation", new_callable=AsyncMock) as mock_run:
+        await on_message_handler(ctx)
+
+    mock_run.assert_not_awaited()
+    ctx.send.assert_awaited_once()
+    assert ctx.send.await_args.args[0].text == UNAUTHORIZED_REPLY
 
 
 def test_is_sender_authorized_open_mode(monkeypatch):
     monkeypatch.setenv("TEAMS_AUTHZ_MODE", "open")
-    activity = _personal_activity(text="hi", user_id="anyone")
+    activity = _personal_activity(text="hi", aad_object_id=None)
     assert is_sender_authorized(activity) is True

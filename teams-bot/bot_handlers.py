@@ -57,8 +57,13 @@ def strip_bot_mention(text: str, bot_name: str = "OpenSRE") -> str:
     return cleaned.strip()
 
 
-def resolve_sender_identity(activity: Any) -> tuple[str | None, str | None]:
-    """Extract AAD object id / Teams user id and UPN from activity.from."""
+def resolve_sender_aad_object_id(activity: Any) -> str | None:
+    """Return the sender's AAD object id from activity.from_, if present.
+
+    Only ``aad_object_id`` / ``aadObjectId`` on the typed Account are trusted.
+    ``from.id`` and activity property extras are spoofable on Web Chat /
+    Direct Line and must not be used for authorization.
+    """
 
     def _first_str(*values: Any) -> str | None:
         for value in values:
@@ -68,27 +73,17 @@ def resolve_sender_identity(activity: Any) -> tuple[str | None, str | None]:
 
     sender = getattr(activity, "from_", None) or getattr(activity, "from", None)
     if sender is None:
-        return None, None
+        return None
 
-    user_id = _first_str(
+    return _first_str(
         getattr(sender, "aad_object_id", None),
         getattr(sender, "aadObjectId", None),
-        getattr(sender, "id", None),
     )
-    upn = _first_str(
-        getattr(sender, "user_principal_name", None),
-        getattr(sender, "userPrincipalName", None),
-    )
-    if not upn:
-        props = getattr(sender, "properties", None) or {}
-        if isinstance(props, dict):
-            upn = _first_str(props.get("email"), props.get("userPrincipalName"))
-    return user_id, upn
 
 
 def is_sender_authorized(activity: Any) -> bool:
-    user_id, upn = resolve_sender_identity(activity)
-    return Config().is_user_authorized(user_id=user_id, upn=upn)
+    aad_object_id = resolve_sender_aad_object_id(activity)
+    return Config().is_user_authorized(user_id=aad_object_id)
 
 
 def _dict_to_adaptive_card(card: dict):

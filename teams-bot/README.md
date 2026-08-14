@@ -15,8 +15,7 @@ Set these in the repo root `.env` (see `env.example`):
 | `TEAMS_APP_PASSWORD` | Client secret |
 | `TEAMS_TENANT_ID` | Azure AD tenant ID |
 | `TEAMS_AUTHZ_MODE` | `allowlist` (default) or `open` (local dev — allow all) |
-| `TEAMS_ALLOWED_USER_IDS` | Comma-separated AAD object IDs allowed to investigate |
-| `TEAMS_ALLOWED_UPNS` | Comma-separated user principal names allowed to investigate |
+| `TEAMS_ALLOWED_USER_IDS` | Comma-separated **AAD object IDs** allowed to investigate (from Entra; Teams `activity.from.aadObjectId`) |
 | `SRE_AGENT_URL` | sre-agent base URL (default `http://localhost:8000`) |
 | `INVESTIGATE_AUTH_TOKEN` | Bearer token for `/investigate` and `/answer` |
 | `PORT` | HTTP listen port (default `3978`) |
@@ -24,6 +23,11 @@ Set these in the repo root `.env` (see `env.example`):
 `config.py` maps `TEAMS_*` to the SDK's `CLIENT_ID`, `CLIENT_SECRET`, and
 `TENANT_ID` at startup. If any of the three Teams credentials are missing, `app.py`
 exits cleanly with code 0 (no crash loop in Docker).
+
+In **allowlist** mode the bot authorizes senders only when `activity.from.aadObjectId`
+matches an entry in `TEAMS_ALLOWED_USER_IDS`. `from.id` and activity property extras
+are not trusted (Web Chat / Direct Line can spoof them). Use Entra object IDs, not
+Teams conversation user ids or UPNs.
 
 ## Local development
 

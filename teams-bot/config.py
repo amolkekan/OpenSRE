@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# allowlist (default): only TEAMS_ALLOWED_USER_IDS / TEAMS_ALLOWED_UPNS may act;
+# allowlist (default): only TEAMS_ALLOWED_USER_IDS (AAD object IDs) may act;
 # empty allowlist denies everyone. open: local-dev escape hatch (allow all).
 VALID_AUTHZ_MODES = frozenset({"allowlist", "open"})
 
@@ -47,21 +47,15 @@ class Config:
         self.allowed_user_ids = _parse_csv_set(
             os.environ.get("TEAMS_ALLOWED_USER_IDS", "")
         )
-        self.allowed_upns = _parse_csv_set(os.environ.get("TEAMS_ALLOWED_UPNS", ""))
 
-    def is_user_authorized(self, *, user_id: str | None, upn: str | None) -> bool:
+    def is_user_authorized(self, *, user_id: str | None) -> bool:
         """Return True when the sender may start investigations or submit answers."""
         if self.authz_mode == "open":
             return True
-        if not self.allowed_user_ids and not self.allowed_upns:
+        if not self.allowed_user_ids:
             return False
         uid = (user_id or "").strip().lower()
-        normalized_upn = (upn or "").strip().lower()
-        if uid and uid in self.allowed_user_ids:
-            return True
-        if normalized_upn and normalized_upn in self.allowed_upns:
-            return True
-        return False
+        return bool(uid and uid in self.allowed_user_ids)
 
     def is_configured(self) -> bool:
         return bool(
