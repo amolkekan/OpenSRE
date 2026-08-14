@@ -26,8 +26,25 @@ logger = logging.getLogger(__name__)
 # Host default uses compose-published bolt port (7688). In-container URI is set by compose.
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7688")
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "localdev")
 NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+
+_LOCAL_URI_PREFIXES = ("bolt://localhost:", "bolt://127.0.0.1:")
+
+
+def _resolve_neo4j_password(uri: str) -> str:
+    """Return NEO4J_PASSWORD from env; fail closed for non-local URIs."""
+    password = (os.getenv("NEO4J_PASSWORD") or "").strip()
+    if password:
+        return password
+    if uri.startswith(_LOCAL_URI_PREFIXES):
+        # Local compose dev default — only when targeting localhost Bolt.
+        return "localdev"
+    raise RuntimeError(
+        f"NEO4J_PASSWORD must be set for non-local Neo4j connections (uri={uri})"
+    )
+
+
+NEO4J_PASSWORD = _resolve_neo4j_password(NEO4J_URI)
 
 _driver: Optional[Driver] = None
 
