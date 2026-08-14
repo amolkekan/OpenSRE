@@ -42,6 +42,8 @@ services:
       retries: 10
     networks:
       - app_network
+      # Same as config-service: custom-only networks skip host port publish on Desktop.
+      - default
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Config Service — team config, tokens, audit logging
@@ -106,6 +108,8 @@ services:
       timeout: 5s
     networks:
       - app_network
+      # Same as config-service: custom-only networks skip host port publish on Desktop.
+      - default
 
   # ─────────────────────────────────────────────────────────────────────────────
   # LiteLLM Proxy — OPTIONAL multi-provider proxy (OpenRouter/others).
@@ -263,7 +267,7 @@ services:
       - HOSTNAME=0.0.0.0
       - PORT=3000
     ports:
-      - "3002:3000"
+      - "127.0.0.1:3002:3000"
     depends_on:
       config-service:
         condition: service_healthy

@@ -42,6 +42,17 @@ def test_config_service_and_sre_agent_ports_bound_to_localhost():
     agent_ports = _port_strings(services["sre-agent"])
     assert any(p.startswith(f"{LOCALHOST}:8001:") for p in agent_ports), agent_ports
 
+    web_ports = _port_strings(services["web-ui"])
+    assert any(p.startswith(f"{LOCALHOST}:3002:") for p in web_ports), web_ports
+
+
+def test_datastore_services_join_default_network_for_host_ports():
+    """Custom-only networks skip host publish on Docker Desktop; join default too."""
+    compose = _load_compose()
+    for name in ("postgres", "neo4j"):
+        nets = compose["services"][name].get("networks") or []
+        assert "default" in nets, f"{name} networks={nets}"
+
 
 def test_compose_does_not_commit_weak_postgres_password():
     compose = _load_compose()
