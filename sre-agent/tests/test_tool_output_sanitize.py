@@ -1,11 +1,14 @@
-"""Unit tests for env/printenv Bash output sanitization."""
+"""Unit tests for tool output/input sanitization and secret redaction."""
 
 import json
 
+from events import tool_start_event
 from tool_output_sanitize import (
     is_env_dump_command,
     sanitize_bash_output,
+    sanitize_command,
     sanitize_tool_end_payload,
+    sanitize_tool_input,
 )
 
 
@@ -41,9 +44,12 @@ def test_printenv_single_var_redacted():
     assert sanitized == "BKT_HOST=<redacted>"
 
 
-def test_kubectl_output_unchanged():
-    output = "NAME    READY   STATUS\npod-1   1/1     Running"
-    assert sanitize_bash_output("kubectl get pods", output) == output
+def test_kubectl_output_redacts_embedded_secrets():
+    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    output = f"NAME    READY   STATUS\npod-1   1/1     Running token={secret}"
+    sanitized = sanitize_bash_output("kubectl get pods", output)
+    assert secret not in sanitized
+    assert "<redacted>" in sanitized
 
 
 def test_json_stdout_wrapper_sanitized():
@@ -58,6 +64,30 @@ def test_json_stdout_wrapper_sanitized():
     parsed = json.loads(sanitized)
     assert secret not in parsed["stdout"]
     assert "BKT_TOKEN=<redacted>" in parsed["stdout"]
+
+
+def test_authorization_header_redacted_in_output():
+    output = "HTTP/1.1 200 OK\nAuthorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+    assert "eyJhbGciOiJIUzI1NiJ9" not in sanitized
+    assert "Authorization: Bearer <redacted>" in sanitized
+
+
+def test_aws_access_key_redacted():
+    key = "AKIAIOSFODNN7EXAMPLE"
+    output = f"Using credentials {key} for request"
+    sanitized, _ = sanitize_tool_end_payload(
+        "Bash", {"command": "aws sts get-caller-identity"}, output, None
+    )
+    assert key not in sanitized
+    assert "<redacted>" in sanitized
+
+
+def test_generic_api_key_assignment_redacted():
+    output = "config: api_key=supersecretvalue12345"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+    assert "supersecretvalue12345" not in sanitized
+    assert "api_key=<redacted>" in sanitized
 
 
 def test_sanitize_tool_end_payload_early_return_for_non_bash():
@@ -80,3 +110,46 @@ def test_sanitize_tool_end_payload_redacts_bash_env():
     )
     assert output == "BKT_TOKEN=<redacted>"
     assert error is None
+
+
+def test_sanitize_tool_end_payload_redacts_error_message():
+    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    _, error = sanitize_tool_end_payload(
+        "Bash",
+        {"command": "curl https://api.github.com"},
+        None,
+        f"401 Unauthorized token={secret}",
+    )
+    assert secret not in error
+    assert "<redacted>" in error
+
+
+def test_sanitize_command_redacts_embedded_bearer_token():
+    secret = "sk-abcdefghijklmnopqrstuvwxyz123456"
+    command = f"curl -H 'Authorization: Bearer {secret}' https://api.example.com"
+    sanitized = sanitize_command(command)
+    assert secret not in sanitized
+    assert "Bearer <redacted>" in sanitized
+
+
+def test_sanitize_tool_input_redacts_bash_command():
+    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    sanitized = sanitize_tool_input(
+        "Bash",
+        {"command": f"curl -H Authorization: Bearer {secret}"},
+    )
+    assert secret not in sanitized["command"]
+    assert "<redacted>" in sanitized["command"]
+
+
+def test_tool_start_event_redacts_command_in_sse_payload():
+    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    evt = tool_start_event(
+        "thread-1",
+        "Bash",
+        {"command": f"curl -H Authorization: Bearer {secret}"},
+        tool_use_id="t1",
+    )
+    assert secret not in evt.data["command"]
+    assert "<redacted>" in evt.data["command"]
+    assert secret not in json.dumps(evt.data["input"])

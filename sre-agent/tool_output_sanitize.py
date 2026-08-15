@@ -1,11 +1,13 @@
-"""Sanitize env/printenv Bash tool output before SSE stream and DB persistence.
+"""Sanitize tool inputs and outputs before SSE stream and DB persistence.
 
-Keeps variable names visible for debugging; strips all values so secrets never
-land in traces or the web UI.
+Redacts environment dumps, Authorization headers, bearer tokens, common API key
+patterns, AWS keys, and other credential shapes so secrets never land in traces
+or the web UI.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from typing import Any
@@ -25,6 +27,63 @@ _DECLARE_X_LINE = re.compile(r"^declare\s+-x\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))
 _SUMMARY_THRESHOLD = 15
 
 _REDACTED = "<redacted>"
+
+# Secret-shaped substrings in arbitrary tool output, commands, and errors.
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # Authorization / auth headers (curl -H, HTTP responses, etc.)
+    (
+        re.compile(
+            r"(?i)(Authorization\s*:\s*)(Bearer|Basic|Token)\s+[^\s'\"]+",
+            re.MULTILINE,
+        ),
+        r"\1\2 " + _REDACTED,
+    ),
+    (
+        re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-+/=]{8,}"),
+        "Bearer " + _REDACTED,
+    ),
+    (
+        re.compile(r"(?i)\bBasic\s+[A-Za-z0-9+/=]{8,}"),
+        "Basic " + _REDACTED,
+    ),
+    # AWS access key IDs and common secret-key assignments.
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), _REDACTED),
+    (
+        re.compile(
+            r"(?i)(aws[_\s-]?secret[_\s-]?access[_\s-]?key|secret_access_key)\s*[:=]\s*['\"]?[A-Za-z0-9/+=]{40}['\"]?",
+        ),
+        r"\1=" + _REDACTED,
+    ),
+    # Well-known token prefixes.
+    (re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"), _REDACTED),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), _REDACTED),
+    (re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"), _REDACTED),
+    (re.compile(r"\bxox[baprs]-[0-9a-zA-Z\-]{10,}\b"), _REDACTED),
+    (re.compile(r"\bATATT[A-Za-z0-9_\-]{20,}\b"), _REDACTED),
+    (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), _REDACTED),
+    # Generic api_key / secret / token / password assignments.
+    (
+        re.compile(
+            r"(?i)(api[_-]?key|apikey|secret|token|password|passwd|pwd|auth)\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?",
+        ),
+        r"\1=" + _REDACTED,
+    ),
+    # PEM private keys.
+    (
+        re.compile(
+            r"-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----",
+            re.MULTILINE,
+        ),
+        _REDACTED,
+    ),
+    # JWT-shaped tokens (three base64url segments).
+    (
+        re.compile(
+            r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"
+        ),
+        _REDACTED,
+    ),
+]
 
 
 def is_env_dump_command(command: str) -> bool:
@@ -83,28 +142,61 @@ def _redact_env_text(text: str) -> str:
     return "\n".join(redacted_lines)
 
 
-def sanitize_bash_output(command: str, output: str | None) -> str | None:
-    """Redact values from env/printenv/set output; pass everything else through."""
-    if output is None or not is_env_dump_command(command):
-        return output
+def _redact_secrets_in_text(text: str) -> str:
+    """Apply regex-based secret redaction to arbitrary text."""
+    redacted = text
+    for pattern, replacement in _SECRET_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
 
-    # SDK Bash responses are sometimes JSON-wrapped with stdout/stderr fields.
-    wrapper = _try_parse_json_output(output)
+
+def _sanitize_plain_or_json_text(text: str) -> str:
+    """Redact secrets in plain text or SDK JSON stdout/stderr wrappers."""
+    wrapper = _try_parse_json_output(text)
     if wrapper is not None:
         changed = False
         for field in ("stdout", "stderr"):
             if field in wrapper and wrapper[field] is not None:
                 inner = wrapper[field]
                 if isinstance(inner, str):
-                    sanitized = _redact_env_text(inner)
+                    sanitized = _redact_secrets_in_text(inner)
                     if sanitized != inner:
                         wrapper[field] = sanitized
                         changed = True
         if changed:
             return json.dumps(wrapper)
-        return output
+        return text
 
-    return _redact_env_text(output)
+    return _redact_secrets_in_text(text)
+
+
+def sanitize_bash_output(command: str, output: str | None) -> str | None:
+    """Redact env dumps and secret-shaped values from Bash tool output."""
+    if output is None:
+        return None
+
+    if is_env_dump_command(command):
+        wrapper = _try_parse_json_output(output)
+        if wrapper is not None:
+            changed = False
+            for field in ("stdout", "stderr"):
+                if field in wrapper and wrapper[field] is not None:
+                    inner = wrapper[field]
+                    if isinstance(inner, str):
+                        sanitized = _redact_env_text(inner)
+                        sanitized = _redact_secrets_in_text(sanitized)
+                        if sanitized != inner:
+                            wrapper[field] = sanitized
+                            changed = True
+            if changed:
+                output = json.dumps(wrapper)
+        else:
+            output = _redact_env_text(output)
+            output = _redact_secrets_in_text(output)
+    else:
+        output = _sanitize_plain_or_json_text(output)
+
+    return output
 
 
 def _try_parse_json_output(output: str) -> dict | None:
@@ -125,6 +217,27 @@ def _extract_command(tool_input: Any) -> str | None:
     return None
 
 
+def sanitize_command(command: str) -> str:
+    """Redact secret-shaped substrings embedded in a Bash command string."""
+    return _redact_secrets_in_text(command)
+
+
+def sanitize_tool_input(tool_name: str, tool_input: Any) -> Any:
+    """Redact secrets in tool_start payloads (commands, args, etc.)."""
+    if not isinstance(tool_input, dict):
+        return tool_input
+
+    sanitized = copy.deepcopy(tool_input)
+    if tool_name == "Bash" and isinstance(sanitized.get("command"), str):
+        sanitized["command"] = sanitize_command(sanitized["command"])
+
+    for key, value in sanitized.items():
+        if isinstance(value, str) and key != "command":
+            sanitized[key] = _redact_secrets_in_text(value)
+
+    return sanitized
+
+
 def sanitize_tool_end_payload(
     tool_name: str,
     tool_input: Any,
@@ -132,14 +245,14 @@ def sanitize_tool_end_payload(
     error: str | None,
 ) -> tuple[str | None, str | None]:
     """Entry point for hooks and persistence. Returns (output, error)."""
-    if tool_name != "Bash":
-        return output, error
+    if tool_name == "Bash":
+        command = _extract_command(tool_input)
+        if command:
+            return (
+                sanitize_bash_output(command, output),
+                sanitize_bash_output(command, error) if error else error,
+            )
 
-    command = _extract_command(tool_input)
-    if not command or not is_env_dump_command(command):
-        return output, error
-
-    return (
-        sanitize_bash_output(command, output),
-        sanitize_bash_output(command, error) if error else error,
-    )
+    sanitized_output = _sanitize_plain_or_json_text(output) if output else output
+    sanitized_error = _sanitize_plain_or_json_text(error) if error else error
+    return sanitized_output, sanitized_error
