@@ -4,12 +4,16 @@
 # Envoy sidecar traffic to credential-resolver and in-cluster OpenSRE services is allowlisted;
 # all other egress is blocked when the cluster CNI enforces NetworkPolicy.
 #
+# Sandboxes never initiate connections to sandbox-router (server/router calls sandboxes).
+# Do not add sandbox-router to this allowlist — namespaceSelector: {} would expose every
+# sandbox-router instance cluster-wide to a compromised sandbox.
+#
 # Apply in the namespace where sandboxes run (same namespace as sandbox_manager.namespace):
 #   kubectl apply -f sre-agent/k8s/sandbox-network-policy.yaml -n <sandbox-namespace>
 #
-# Credential-resolver and sandbox-router often live in a separate platform namespace;
-# the cross-namespace rules use pod label selectors — adjust values if your install differs.
-# See sre-agent/k8s/README.md for label expectations.
+# Credential-resolver runs in a separate platform namespace (default opensre-prod per
+# sandbox_manager CREDENTIAL_RESOLVER_NAMESPACE). Edit the namespaceSelector if yours differs.
+# See sre-agent/k8s/README.md for label expectations and SaaS egress limitations.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -35,38 +39,46 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # config-service, k8s-gateway, and RAG in the sandbox namespace
+    # config-service in the sandbox namespace
     - to:
         - podSelector:
-            matchExpressions:
-              - key: app
-                operator: In
-                values:
-                  - opensre-config-service
-                  - opensre-k8s-gateway
-                  - opensre-rag
+            matchLabels:
+              app: opensre-config-service
       ports:
         - protocol: TCP
           port: 8080
+    # k8s-gateway in the sandbox namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app: opensre-k8s-gateway
+      ports:
         - protocol: TCP
           port: 8085
+    # RAG in the sandbox namespace (Service opensre-rag:8000 — match common backend pod labels)
+    # Operators using other RAG chart labels must edit these selectors or label their RAG pods.
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - opensre-ultimate-rag
+                  - opensre-knowledge-base
+        - podSelector:
+            matchLabels:
+              app: opensre-rag
+      ports:
         - protocol: TCP
           port: 8000
-    # credential-resolver (may run in a dedicated platform namespace)
+    # credential-resolver (runs in platform namespace; default opensre-prod in sandbox_manager)
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: opensre-prod
           podSelector:
             matchLabels:
               app: credential-resolver
       ports:
         - protocol: TCP
           port: 8002
-    # sandbox-router (server-to-sandbox routing; warm-pool health checks)
-    - to:
-        - namespaceSelector: {}
-          podSelector:
-            matchLabels:
-              app: sandbox-router
-      ports:
-        - protocol: TCP
-          port: 8080
