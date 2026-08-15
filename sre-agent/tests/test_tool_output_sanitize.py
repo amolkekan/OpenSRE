@@ -269,3 +269,37 @@ def test_json_value_with_escaped_quote_fully_redacted():
     sanitized, _ = sanitize_tool_end_payload("Read", None, body, None)
     assert secret not in sanitized
     assert '"token": "<redacted>"' in sanitized
+
+
+def test_prefixed_json_and_yaml_token_password_keys_redacted():
+    cases = [
+        ('{"refresh_token": "opaquererefreshtoken99"}', "opaquererefreshtoken99"),
+        ('{"id_token": "opaqueidtokenvalue99999"}', "opaqueidtokenvalue99999"),
+        ('{"POSTGRES_PASSWORD": "superdbpassfromjson"}', "superdbpassfromjson"),
+        ("refresh_token: yamlsecrettokenvalue99", "yamlsecrettokenvalue99"),
+        ("POSTGRES_PASSWORD: yamlsecretpassword99", "yamlsecretpassword99"),
+    ]
+    for output, secret in cases:
+        sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+        assert secret not in sanitized, output
+        assert "<redacted>" in sanitized
+
+
+def test_prefixed_env_key_preserves_leading_delimiter():
+    secret = "atlassianapitoken123"
+    output = f"hello JIRA_API_TOKEN={secret}"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+    assert secret not in sanitized
+    assert "hello JIRA_API_TOKEN=<redacted>" in sanitized
+
+
+def test_curl_user_equals_and_glued_u_redacted():
+    secret = "curlsecretpass456"
+    cases = [
+        f"curl --user=deploy:{secret} https://api.example.com",
+        f"curl -udeploy:{secret} https://api.example.com",
+    ]
+    for command in cases:
+        sanitized = sanitize_command(command)
+        assert secret not in sanitized, command
+        assert "deploy:<redacted>" in sanitized

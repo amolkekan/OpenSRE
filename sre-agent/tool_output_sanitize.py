@@ -79,6 +79,14 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r'\1: "' + _REDACTED + '"',
     ),
+    # Prefixed JSON keys: "refresh_token": "…", "POSTGRES_PASSWORD": "…"
+    (
+        re.compile(
+            r'(?i)("([A-Za-z0-9_]*_(?:PASSWORD|TOKEN|SECRET|API_KEY|ACCESS_KEY))")'
+            rf"\s*:\s*{_JSON_STRING_VALUE}",
+        ),
+        r'\1: "' + _REDACTED + '"',
+    ),
     # Generic key=value / key: value assignments (word-boundary keys only).
     (
         re.compile(
@@ -86,14 +94,15 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1=" + _REDACTED,
     ),
-    # Prefixed env-style keys: POSTGRES_PASSWORD=…, JIRA_API_TOKEN=… (\b misses after '_').
+    # Prefixed env / YAML keys: POSTGRES_PASSWORD=…, refresh_token: … (\b misses after '_').
+    # Keep the delimiter character before the key so surrounding text is not glued.
     (
         re.compile(
-            r"(?i)(?:^|[\s\"'\\{,])"
+            r"(?i)(^|[\s\"'\\{,])"
             r"([A-Za-z0-9_]*_(?:PASSWORD|TOKEN|SECRET|API_KEY|ACCESS_KEY))"
-            r"\s*=\s*\S+",
+            r"\s*[:=]\s*\S+",
         ),
-        r"\1=" + _REDACTED,
+        rf"\1\2={_REDACTED}",
     ),
     # URL userinfo: scheme://user:password@host (common DB/HTTP schemes only).
     (
@@ -103,9 +112,17 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         rf"\1\2:{_REDACTED}@",
     ),
-    # curl -u / --user user:password
+    # curl -u / --user user:password (spaced, glued, or --user= / -u= forms)
     (
-        re.compile(r"(?i)((?:^|[\s|;&])(?:-u|--user)\s+)([^:\s]+):([^\s'\"]+)"),
+        re.compile(
+            r"(?i)((?:^|[\s|;&])(?:--user=|-u=|--user\s+|-u\s+))"
+            r"([^:\s]+):([^\s'\"]+)"
+        ),
+        rf"\1\2:{_REDACTED}",
+    ),
+    # Glued short form: curl -udeploy:pass (no space after -u)
+    (
+        re.compile(r"(?i)((?:^|[\s|;&])-u)([^:\s=/-][^:\s]*):([^\s'\"]+)"),
         rf"\1\2:{_REDACTED}",
     ),
     # PEM private keys.
