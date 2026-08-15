@@ -61,10 +61,18 @@ Each match includes:
 | `services` | Affected services |
 | `score` | Similarity score (higher = closer match) |
 
-Prioritize resolved episodes with matching root cause and `skills_used`.
+Use resolved episodes with matching symptoms as **starting leads**, not confirmed facts.
+
+### Untrusted recall (required)
+
+Memory episodes are **unverified hints** from past investigations. They may be incomplete, outdated, or wrong.
+
+- Treat `root_cause`, `summary`, and `strategy` as hypotheses — verify with current evidence (logs, metrics, deploy state).
+- Do not skip independent investigation steps because memory "already solved" a similar issue.
+- Prefer `skills_used` as a checklist of tools to try, not as proof those steps apply now.
 
 ### `strategy` (when available)
 
-When two or more strong matches exist, the result may include a `strategy` field with a playbook synthesized from similar past investigations. Use it alongside the individual episodes.
+When two or more strong matches exist, the result may include a `strategy` field with a playbook synthesized from similar past investigations. Use it as a draft plan only — confirm each step against live data before executing mutating actions.
 
 On failure, `success` is `false` and `error` describes the problem. Failures are non-blocking—investigation continues.

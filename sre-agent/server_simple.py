@@ -361,8 +361,47 @@ def _flush_thoughts(run_id: str, thoughts: list) -> None:
 
 # ---------------------------------------------------------------------------
 # File proxy: token -> download info mapping
+_ALLOWED_DOWNLOAD_HOSTS = frozenset(
+    {
+        "files.slack.com",
+        "files-origin.slack.com",
+    }
+)
 _file_download_tokens: Dict[str, dict] = {}
 _FILE_TOKEN_TTL_SECONDS = 3600  # 1 hour
+
+
+def _validate_download_url(url: str) -> None:
+    """Validate download URL to prevent SSRF against internal services."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https", "http"):
+        raise ValueError(f"Invalid URL scheme: {parsed.scheme}")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("Missing hostname in download URL")
+    # Block private/internal IPs (includes cloud metadata at 169.254.x.x)
+    import ipaddress
+
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError(f"Download URL targets private IP: {host}")
+    except ValueError as e:
+        if "private" in str(e) or "loopback" in str(e) or "link_local" in str(e):
+            raise
+        # Not an IP — hostname; check allowlist below
+    if host not in _ALLOWED_DOWNLOAD_HOSTS:
+        extra = os.getenv("ALLOWED_DOWNLOAD_HOSTS", "")
+        extra_hosts = frozenset(
+            h.strip().lower() for h in extra.split(",") if h.strip()
+        )
+        if host not in extra_hosts:
+            raise ValueError(
+                f"Download host '{host}' not in allowlist. "
+                f"Allowed: {', '.join(sorted(_ALLOWED_DOWNLOAD_HOSTS | extra_hosts))}"
+            )
 
 import asyncio
 
@@ -969,6 +1008,11 @@ async def investigate(investigate_request: InvestigateRequest, http_request: Req
         proxy_base_url = _get_proxy_base_url()
 
         for attachment in investigate_request.file_attachments:
+            try:
+                _validate_download_url(attachment.download_url)
+            except ValueError as e:
+                raise HTTPException(400, f"Invalid file attachment URL: {e}") from e
+
             token = secrets.token_urlsafe(32)
             _file_download_tokens[token] = {
                 "download_url": attachment.download_url,
