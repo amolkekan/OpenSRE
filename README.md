@@ -56,6 +56,14 @@ This starts Postgres, config-service, Neo4j, sre-agent, and the web console. Mig
 
 > **[Full setup guide](https://www.opensre.in/docs/quick-start)** · **[Slack integration](https://www.opensre.in/docs/integrations)** · **[Configuration](https://www.opensre.in/docs/configuration)**
 
+## Self-hosting security
+
+`make dev` and the default Helm simple profile run **simple-mode** (`server_simple.py`): cleartext HTTP between compose services, no built-in rate limits, and network-trust control APIs. That is appropriate on localhost or a private network—not on the public internet without hardening.
+
+Before exposing an instance: terminate **TLS at your reverse proxy or ingress**, keep datastores and the agent API off the public internet, and add **rate limits, body size caps, and concurrency limits** at the edge (or use sandbox mode for production isolation).
+
+**[→ TLS, DoS posture, and hardening checklist](SECURITY.md#self-hosting-tls-and-dos-posture)**
+
 ## Architecture
 
 <p align="center">

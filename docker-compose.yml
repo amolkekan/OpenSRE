@@ -17,6 +17,9 @@ version: '3.8'
 #   make logs       Follow logs
 #   make clean      Remove containers + volumes
 #
+# Production: HTTP between services here is for local dev only — terminate TLS at
+# ingress/reverse proxy and see SECURITY.md#self-hosting-tls-and-dos-posture.
+#
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
