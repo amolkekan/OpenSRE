@@ -49,6 +49,16 @@ def test_validate_download_url_allows_env_extra_hosts(monkeypatch):
     server_simple._validate_download_url("https://cdn.example.com/file.pdf")
 
 
+def test_validate_download_url_allows_hostname_containing_private(monkeypatch):
+    """Hostnames with 'private' in the name must not trip the IP-block path."""
+    import server_simple
+
+    monkeypatch.setenv("ALLOWED_DOWNLOAD_HOSTS", "my-private-cdn.example.com")
+    server_simple._validate_download_url(
+        "https://my-private-cdn.example.com/file.pdf"
+    )
+
+
 def test_investigate_rejects_private_attachment_url(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     import server_simple

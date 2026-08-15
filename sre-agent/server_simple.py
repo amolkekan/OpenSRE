@@ -381,17 +381,18 @@ def _validate_download_url(url: str) -> None:
     host = (parsed.hostname or "").lower()
     if not host:
         raise ValueError("Missing hostname in download URL")
-    # Block private/internal IPs (includes cloud metadata at 169.254.x.x)
+    # Block private/internal IPs (includes cloud metadata at 169.254.x.x).
+    # Do not scan exception text for "private" — hostnames like my-private-cdn
+    # would false-positive when ip_address() rejects a non-IP string.
     import ipaddress
 
     try:
         ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None  # hostname — allowlist check below
+    else:
         if ip.is_private or ip.is_loopback or ip.is_link_local:
             raise ValueError(f"Download URL targets private IP: {host}")
-    except ValueError as e:
-        if "private" in str(e) or "loopback" in str(e) or "link_local" in str(e):
-            raise
-        # Not an IP — hostname; check allowlist below
     if host not in _ALLOWED_DOWNLOAD_HOSTS:
         extra = os.getenv("ALLOWED_DOWNLOAD_HOSTS", "")
         extra_hosts = frozenset(
