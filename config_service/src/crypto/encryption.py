@@ -193,6 +193,8 @@ class EncryptionService:
 
         decrypted = {}
 
+        from src.core.secret_redaction import is_sensitive_key
+
         for key, value in data.items():
             if isinstance(value, str) and value.startswith(("fernet:", "enc:")):
                 try:
@@ -202,6 +204,14 @@ class EncryptionService:
                         decrypted[key] = value
                     else:
                         raise
+            elif is_sensitive_key(key) and isinstance(value, str) and value:
+                if is_plaintext_secret_allowed():
+                    decrypted[key] = value
+                else:
+                    raise EncryptionError(
+                        "Refusing to return plaintext secret field outside local/dev. "
+                        "Re-encrypt the value or set CONFIG_MODE=local for development."
+                    )
             elif isinstance(value, dict):
                 decrypted[key] = self.decrypt_dict(value)
             else:

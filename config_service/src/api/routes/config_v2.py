@@ -21,7 +21,11 @@ from ...core.hierarchical_config import (
     get_fields_requiring_approval,
     get_full_default_config,
 )
-from ...core.secret_redaction import redact_config_for_client_response
+from ...core.secret_redaction import (
+    merge_config_preserving_secrets,
+    redact_config_for_client_response,
+    redact_configs_map,
+)
 from ...core.security import get_token_pepper
 from ...core.yaml_config import write_config_to_yaml
 from ...db import config_repository as repo
@@ -283,7 +287,7 @@ async def get_raw_config(
     return ConfigResponse(
         node_id=config.node_id,
         node_type=config.node_type,
-        config=config.config_json,
+        config=redact_config_for_client_response(config.config_json or {}),
         version=config.version,
         updated_at=config.updated_at,
         updated_by=config.updated_by,
@@ -393,11 +397,14 @@ async def update_config(
     # For now, allow direct changes
 
     try:
+        current_config = config.config_json or {}
+        safe_patch = merge_config_preserving_secrets(current_config, body.config)
+
         updated_config, diff = repo.update_node_configuration(
             db,
             org_id,
             node_id,
-            body.config,
+            safe_patch,
             updated_by=admin.subject if hasattr(admin, "subject") else "admin",
             change_reason=body.reason,
         )
@@ -415,7 +422,9 @@ async def update_config(
         return ConfigResponse(
             node_id=updated_config.node_id,
             node_type=updated_config.node_type,
-            config=updated_config.config_json,
+            config=redact_config_for_client_response(
+                updated_config.config_json or {}
+            ),
             version=updated_config.version,
             updated_at=updated_config.updated_at,
             updated_by=updated_config.updated_by,
@@ -516,7 +525,7 @@ async def rollback_config(
         return ConfigResponse(
             node_id=config.node_id,
             node_type=config.node_type,
-            config=config.config_json,
+            config=redact_config_for_client_response(config.config_json or {}),
             version=config.version,
             updated_at=config.updated_at,
             updated_by=config.updated_by,
@@ -815,7 +824,7 @@ async def get_my_raw_config(
 
     return {
         "lineage": hierarchy,
-        "configs": configs,
+        "configs": redact_configs_map(configs),
     }
 
 
@@ -1141,11 +1150,14 @@ async def update_my_config(
             )
 
     try:
+        current_config = config.config_json or {}
+        safe_patch = merge_config_preserving_secrets(current_config, body.config)
+
         updated_config, diff = repo.update_node_configuration(
             db,
             org_id,
             team_node_id,
-            body.config,
+            safe_patch,
             updated_by="team",
             change_reason=body.reason,
         )
@@ -1161,7 +1173,9 @@ async def update_my_config(
         return ConfigResponse(
             node_id=updated_config.node_id,
             node_type=updated_config.node_type,
-            config=updated_config.config_json,
+            config=redact_config_for_client_response(
+                updated_config.config_json or {}
+            ),
             version=updated_config.version,
             updated_at=updated_config.updated_at,
             updated_by=updated_config.updated_by,

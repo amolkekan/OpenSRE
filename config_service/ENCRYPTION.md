@@ -97,7 +97,9 @@ the service fails closed instead of leaking legacy material.
 Team/admin API responses never return live secrets — see `src/core/secret_redaction.py`.
 Browser clients use redacted `/api/v1/config/me/effective`; trusted internal services
 should call `GET /api/v1/internal/config/effective` or
-`GET /api/v1/internal/credentials/{org_id}/{integration_id}/decrypted`.
+`GET /api/v1/internal/credentials/{org_id}/{integration_id}` (``/decrypted`` is an alias).
+Internal Slack app list (`GET /api/v1/internal/slack/apps`) returns live secrets by
+default for runtime consumers such as slack-bot; never call these paths from a browser.
 
 ## Security Considerations
 

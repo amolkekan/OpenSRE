@@ -742,6 +742,33 @@ def create_pending_change_internal(
 # ==================== Integration Credentials ====================
 
 
+def _fetch_configured_integration(
+    session: Session, org_id: str, integration_id: str
+) -> Integration:
+    integration = (
+        session.query(Integration)
+        .filter(
+            Integration.org_id == org_id,
+            Integration.integration_id == integration_id,
+        )
+        .first()
+    )
+
+    if not integration:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Integration '{integration_id}' not found for org '{org_id}'",
+        )
+
+    if integration.status == "not_configured":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Integration '{integration_id}' is not configured",
+        )
+
+    return integration
+
+
 @router.get("/credentials/{org_id}/{integration_id}")
 def get_integration_credentials(
     org_id: str,
@@ -750,83 +777,15 @@ def get_integration_credentials(
     service: str = Depends(require_internal_service),
 ):
     """
-    Return integration credential metadata with secrets redacted.
-
-    Use ``GET /credentials/{org_id}/{integration_id}/decrypted`` when a trusted
-    internal service needs live tokens at runtime.
-    """
-    integration = (
-        session.query(Integration)
-        .filter(
-            Integration.org_id == org_id,
-            Integration.integration_id == integration_id,
-        )
-        .first()
-    )
-
-    if not integration:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Integration '{integration_id}' not found for org '{org_id}'",
-        )
-
-    if integration.status == "not_configured":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Integration '{integration_id}' is not configured",
-        )
-
-    logger.info(
-        "credentials_metadata_fetched",
-        org_id=org_id,
-        integration_id=integration_id,
-        service=service,
-    )
-
-    return {
-        "integration_id": integration_id,
-        "status": integration.status,
-        "config": redact_integration_config(integration.config or {}),
-        "has_credentials": bool(integration.config),
-    }
-
-
-@router.get("/credentials/{org_id}/{integration_id}/decrypted")
-def get_integration_credentials_decrypted(
-    org_id: str,
-    integration_id: str,
-    session: Session = Depends(get_db),
-    service: str = Depends(require_internal_service),
-):
-    """
     Return decrypted credentials for an integration.
 
-    Internal runtime use only — never expose this path to browser clients.
+    Internal runtime use only — never call from a browser client.
     The EncryptedJSONB column auto-decrypts on read.
     """
-    integration = (
-        session.query(Integration)
-        .filter(
-            Integration.org_id == org_id,
-            Integration.integration_id == integration_id,
-        )
-        .first()
-    )
-
-    if not integration:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Integration '{integration_id}' not found for org '{org_id}'",
-        )
-
-    if integration.status == "not_configured":
-        raise HTTPException(
-            status_code=404,
-            detail=f"Integration '{integration_id}' is not configured",
-        )
+    integration = _fetch_configured_integration(session, org_id, integration_id)
 
     logger.info(
-        "credentials_decrypted_fetched",
+        "credentials_fetched",
         org_id=org_id,
         integration_id=integration_id,
         service=service,
@@ -837,6 +796,17 @@ def get_integration_credentials_decrypted(
         "status": integration.status,
         "config": integration.config,
     }
+
+
+@router.get("/credentials/{org_id}/{integration_id}/decrypted")
+def get_integration_credentials_decrypted(
+    org_id: str,
+    integration_id: str,
+    session: Session = Depends(get_db),
+    service: str = Depends(require_internal_service),
+):
+    """Alias for ``GET /credentials/{org_id}/{integration_id}`` (backward compat)."""
+    return get_integration_credentials(org_id, integration_id, session, service)
 
 
 @router.get("/config/effective")
@@ -2116,12 +2086,18 @@ def create_slack_app(
 
 @router.get("/slack/apps", response_model=List[SlackAppResponse])
 def list_slack_apps(
+    include_secrets: bool = True,
     session: Session = Depends(get_db),
     service: str = Depends(require_internal_service),
 ):
-    """List all active Slack apps."""
+    """List all active Slack apps.
+
+    Defaults to live secrets for trusted internal callers (e.g. slack-bot
+    ``load_all()``). Pass ``include_secrets=false`` for redacted metadata only.
+    Never call from a browser client.
+    """
     apps = session.query(SlackApp).filter(SlackApp.is_active.is_(True)).all()
-    return [_slack_app_to_response(a) for a in apps]
+    return [_slack_app_to_response(a, include_secrets=include_secrets) for a in apps]
 
 
 @router.get("/slack/apps/{slug}", response_model=SlackAppResponse)

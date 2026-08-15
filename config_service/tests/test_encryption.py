@@ -151,6 +151,28 @@ def test_sqlalchemy_encrypted_text_plaintext_allowed_local(monkeypatch):
     assert type_obj.process_result_value("plaintext", None) == "plaintext"
 
 
+def test_sqlalchemy_encrypted_jsonb_plaintext_fail_closed(monkeypatch):
+    """Plaintext nested secrets fail closed outside local dev."""
+    from src.crypto import EncryptionError
+    from src.crypto.sqlalchemy_types import EncryptedJSONB
+
+    monkeypatch.delenv("CONFIG_MODE", raising=False)
+    monkeypatch.delenv("ALLOW_PLAINTEXT_SECRETS", raising=False)
+
+    type_obj = EncryptedJSONB()
+    with pytest.raises(EncryptionError, match="Refusing to return plaintext"):
+        type_obj.process_result_value({"api_key": "plaintext-token"}, None)
+
+
+def test_sqlalchemy_encrypted_jsonb_plaintext_allowed_local(monkeypatch):
+    from src.crypto.sqlalchemy_types import EncryptedJSONB
+
+    monkeypatch.setenv("CONFIG_MODE", "local")
+    type_obj = EncryptedJSONB()
+    result = type_obj.process_result_value({"api_key": "plaintext-token"}, None)
+    assert result["api_key"] == "plaintext-token"
+
+
 def test_sqlalchemy_encrypted_jsonb():
     """Test EncryptedJSONB SQLAlchemy type."""
     from src.crypto.sqlalchemy_types import EncryptedJSONB

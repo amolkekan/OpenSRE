@@ -175,6 +175,14 @@ def redact_config_for_client_response(config: Dict[str, Any]) -> Dict[str, Any]:
     return redact_secrets(without_injected)
 
 
+def redact_configs_map(configs: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Redact secrets in a node_id -> config_json map (raw lineage responses)."""
+    return {
+        node_id: redact_config_for_client_response(cfg or {})
+        for node_id, cfg in configs.items()
+    }
+
+
 def redact_slack_app_secrets(app_data: Dict[str, Any]) -> Dict[str, Any]:
     """Redact Slack app registry fields that hold OAuth secrets."""
     redacted = copy.deepcopy(app_data)

@@ -15,7 +15,11 @@ from src.api.auth import AdminPrincipal, authenticate_admin_request
 from src.core.audit_log import audit_logger
 from src.core.config_cache import get_config_cache
 from src.core.metrics import ADMIN_ACTIONS_TOTAL
-from src.core.secret_redaction import redact_config_for_client_response
+from src.core.secret_redaction import (
+    merge_config_preserving_secrets,
+    redact_config_for_client_response,
+    redact_configs_map,
+)
 from src.core.security import get_token_pepper
 from src.db.config_repository import (
     get_effective_config,
@@ -366,7 +370,7 @@ def admin_get_node_config(
         auth_kind=principal.auth_kind,
         actor=principal.email or principal.subject,
     )
-    return {"config": cfg}
+    return {"config": redact_config_for_client_response(cfg or {})}
 
 
 @router.get("/orgs/{org_id}/nodes/{node_id}/raw")
@@ -406,7 +410,7 @@ def admin_get_node_raw_config(
         auth_kind=principal.auth_kind,
         actor=principal.email or principal.subject,
     )
-    return {"lineage": lineage, "configs": configs}
+    return {"lineage": lineage, "configs": redact_configs_map(configs)}
 
 
 @router.get("/orgs/{org_id}/nodes/{node_id}/effective")
@@ -784,11 +788,15 @@ def admin_patch_node_config(
                     }
 
         # Apply the change directly
+        node_config = get_node_configuration(session, org_id=org_id, node_id=node_id)
+        current_config = (node_config.config_json or {}) if node_config else {}
+        safe_patch = merge_config_preserving_secrets(current_config, body.patch)
+
         updated_config, diff = update_node_configuration(
             session,
             org_id=org_id,
             node_id=node_id,
-            config_patch=body.patch,
+            config_patch=safe_patch,
             updated_by=x_admin_actor,
             skip_validation=True,  # Admin can bypass validation
         )
@@ -812,7 +820,7 @@ def admin_patch_node_config(
             auth_kind=principal.auth_kind,
             actor=principal.email or principal.subject,
         )
-        return {"config": merged}
+        return {"config": redact_config_for_client_response(merged or {})}
     except ValueError as e:
         ADMIN_ACTIONS_TOTAL.labels("patch_node_config", "error").inc()
         raise HTTPException(status_code=400, detail=str(e))
@@ -857,7 +865,7 @@ def admin_rollback_node_config(
             auth_kind=principal.auth_kind,
             actor=principal.email or principal.subject,
         )
-        return {"config": cfg}
+        return {"config": redact_config_for_client_response(cfg or {})}
     except ValueError as e:
         ADMIN_ACTIONS_TOTAL.labels("rollback_node_config", "error").inc()
         raise HTTPException(status_code=400, detail=str(e))
