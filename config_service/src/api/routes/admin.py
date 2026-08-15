@@ -15,6 +15,7 @@ from src.api.auth import AdminPrincipal, authenticate_admin_request
 from src.core.audit_log import audit_logger
 from src.core.config_cache import get_config_cache
 from src.core.metrics import ADMIN_ACTIONS_TOTAL
+from src.core.secret_redaction import redact_config_for_client_response
 from src.core.security import get_token_pepper
 from src.db.config_repository import (
     get_effective_config,
@@ -434,7 +435,7 @@ def admin_get_node_effective_config(
         auth_kind=principal.auth_kind,
         actor=principal.email or principal.subject,
     )
-    return eff
+    return redact_config_for_client_response(eff)
 
 
 @router.get("/orgs/{org_id}/nodes/{node_id}/audit", response_model=List[AuditRow])

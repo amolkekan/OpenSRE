@@ -14,6 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ...core.secret_redaction import (
+    merge_config_preserving_secrets,
+    redact_integration_config,
+)
 from ...db.models import Integration, SecurityPolicy, TokenAudit, TokenPermission
 from ...db.session import get_db
 from .admin import check_org_access, require_admin
@@ -91,6 +95,20 @@ class IntegrationUpdate(BaseModel):
     status: Optional[str] = None
     display_name: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
+
+
+def _integration_to_response(integration: Integration) -> IntegrationResponse:
+    """Build an admin-safe integration response with redacted secrets."""
+    return IntegrationResponse(
+        org_id=integration.org_id,
+        integration_id=integration.integration_id,
+        status=integration.status,
+        display_name=integration.display_name,
+        config=redact_integration_config(integration.config or {}),
+        last_checked_at=integration.last_checked_at,
+        error_message=integration.error_message,
+        updated_at=integration.updated_at,
+    )
 
 
 # =============================================================================
@@ -250,7 +268,7 @@ async def list_integrations(
             for i in default_integrations
         ]
 
-    return [IntegrationResponse.model_validate(i) for i in integrations]
+    return [_integration_to_response(i) for i in integrations]
 
 
 @router.get("/integrations/{integration_id}", response_model=IntegrationResponse)
@@ -274,7 +292,7 @@ async def get_integration(
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    return IntegrationResponse.model_validate(integration)
+    return _integration_to_response(integration)
 
 
 @router.put("/integrations/{integration_id}", response_model=IntegrationResponse)
@@ -309,6 +327,11 @@ async def update_integration(
 
     # Update fields
     update_data = body.model_dump(exclude_unset=True)
+    if "config" in update_data and update_data["config"] is not None:
+        update_data["config"] = merge_config_preserving_secrets(
+            integration.config if integration else None,
+            update_data["config"],
+        )
     for key, value in update_data.items():
         setattr(integration, key, value)
 
@@ -317,7 +340,7 @@ async def update_integration(
     db.commit()
     db.refresh(integration)
 
-    return IntegrationResponse.model_validate(integration)
+    return _integration_to_response(integration)
 
 
 class IntegrationTestRequest(BaseModel):

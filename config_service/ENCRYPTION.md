@@ -71,6 +71,34 @@ The key is automatically:
 - Mounted as K8s secret `config-service-secrets.encryption-key`
 - Loaded by the application as `ENCRYPTION_KEY` environment variable
 
+### Key rotation (multi-key decrypt)
+
+During rotation, set both keys:
+
+```bash
+ENCRYPTION_KEY=<new-key>
+ENCRYPTION_KEY_PREVIOUS=<old-key>
+```
+
+New writes use `ENCRYPTION_KEY`. Reads try the current key first, then
+`ENCRYPTION_KEY_PREVIOUS`. Remove the previous key after all data is re-encrypted.
+
+### Plaintext fallback policy
+
+`EncryptedText` columns stored as plaintext (pre-migration rows) are only returned
+when running in local dev:
+
+- `CONFIG_MODE=local`, or
+- `ALLOW_PLAINTEXT_SECRETS=true` (explicit dev escape hatch)
+
+Outside local/dev, reading a plaintext secret column raises `EncryptionError` so
+the service fails closed instead of leaking legacy material.
+
+Team/admin API responses never return live secrets — see `src/core/secret_redaction.py`.
+Browser clients use redacted `/api/v1/config/me/effective`; trusted internal services
+should call `GET /api/v1/internal/config/effective` or
+`GET /api/v1/internal/credentials/{org_id}/{integration_id}/decrypted`.
+
 ## Security Considerations
 
 ### What This Protects Against

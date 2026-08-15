@@ -14,7 +14,14 @@ from typing import Optional
 from sqlalchemy import Text, TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 
-from .encryption import decrypt, decrypt_dict, encrypt, encrypt_dict
+from .encryption import (
+    EncryptionError,
+    decrypt,
+    decrypt_dict,
+    encrypt,
+    encrypt_dict,
+    is_plaintext_secret_allowed,
+)
 
 
 class EncryptedText(TypeDecorator):
@@ -43,12 +50,17 @@ class EncryptedText(TypeDecorator):
         """Decrypt value when retrieving from database."""
         if value is None:
             return None
-        # Handle both encrypted and plaintext (for migration compatibility)
+        # Handle encrypted values (fernet: current format, enc: legacy SSO material)
         if isinstance(value, str) and (
             value.startswith("fernet:") or value.startswith("enc:")
         ):
             return decrypt(value)
-        return value  # Return as-is if not encrypted (backwards compatibility)
+        if is_plaintext_secret_allowed():
+            return value
+        raise EncryptionError(
+            "Refusing to return plaintext secret column outside local/dev. "
+            "Re-encrypt the value or set CONFIG_MODE=local for development."
+        )
 
 
 class EncryptedJSONB(TypeDecorator):

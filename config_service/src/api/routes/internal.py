@@ -15,6 +15,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from src.core.secret_redaction import (
+    redact_integration_config,
+    redact_slack_app_secrets,
+    redact_slack_installation_tokens,
+)
 from src.db import repository
 from src.db.config_models import NodeConfiguration
 from src.db.config_repository import get_or_create_node_configuration
@@ -745,10 +750,58 @@ def get_integration_credentials(
     service: str = Depends(require_internal_service),
 ):
     """
+    Return integration credential metadata with secrets redacted.
+
+    Use ``GET /credentials/{org_id}/{integration_id}/decrypted`` when a trusted
+    internal service needs live tokens at runtime.
+    """
+    integration = (
+        session.query(Integration)
+        .filter(
+            Integration.org_id == org_id,
+            Integration.integration_id == integration_id,
+        )
+        .first()
+    )
+
+    if not integration:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Integration '{integration_id}' not found for org '{org_id}'",
+        )
+
+    if integration.status == "not_configured":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Integration '{integration_id}' is not configured",
+        )
+
+    logger.info(
+        "credentials_metadata_fetched",
+        org_id=org_id,
+        integration_id=integration_id,
+        service=service,
+    )
+
+    return {
+        "integration_id": integration_id,
+        "status": integration.status,
+        "config": redact_integration_config(integration.config or {}),
+        "has_credentials": bool(integration.config),
+    }
+
+
+@router.get("/credentials/{org_id}/{integration_id}/decrypted")
+def get_integration_credentials_decrypted(
+    org_id: str,
+    integration_id: str,
+    session: Session = Depends(get_db),
+    service: str = Depends(require_internal_service),
+):
+    """
     Return decrypted credentials for an integration.
 
-    Used by AI Pipeline (and other internal services) to call external APIs
-    directly — avoids per-integration proxy endpoints in config_service.
+    Internal runtime use only — never expose this path to browser clients.
     The EncryptedJSONB column auto-decrypts on read.
     """
     integration = (
@@ -773,7 +826,7 @@ def get_integration_credentials(
         )
 
     logger.info(
-        "credentials_fetched",
+        "credentials_decrypted_fetched",
         org_id=org_id,
         integration_id=integration_id,
         service=service,
@@ -782,7 +835,47 @@ def get_integration_credentials(
     return {
         "integration_id": integration_id,
         "status": integration.status,
-        "config": integration.config,  # Auto-decrypted by EncryptedJSONB
+        "config": integration.config,
+    }
+
+
+@router.get("/config/effective")
+def get_internal_effective_config(
+    org_id: str,
+    team_node_id: str,
+    session: Session = Depends(get_db),
+    service: str = Depends(require_internal_service),
+):
+    """
+    Return full effective team config including injected runtime credentials.
+
+    Trusted internal services (sre-agent, credential-resolver) should use this
+    instead of the team-facing ``/api/v1/config/me/effective`` endpoint, which
+    redacts secrets for browser clients.
+    """
+    from src.api.routes.config_v2 import (
+        _inject_github_app_credentials,
+        _inject_slack_bot_token,
+    )
+    from src.db import config_repository as config_repo
+
+    effective = config_repo.get_effective_config(session, org_id, team_node_id)
+    effective = _inject_slack_bot_token(effective, org_id, session)
+    effective = _inject_github_app_credentials(
+        effective, org_id, team_node_id, session
+    )
+
+    logger.info(
+        "internal_effective_config_fetched",
+        org_id=org_id,
+        team_node_id=team_node_id,
+        service=service,
+    )
+
+    return {
+        "org_id": org_id,
+        "team_node_id": team_node_id,
+        "effective_config": effective,
     }
 
 
@@ -2034,14 +2127,18 @@ def list_slack_apps(
 @router.get("/slack/apps/{slug}", response_model=SlackAppResponse)
 def get_slack_app(
     slug: str,
+    include_secrets: bool = False,
     session: Session = Depends(get_db),
     service: str = Depends(require_internal_service),
 ):
-    """Get a specific Slack app by slug (includes decrypted secrets)."""
+    """Get a specific Slack app by slug.
+
+    Pass ``include_secrets=true`` for OAuth runtime consumers that need live secrets.
+    """
     app = session.query(SlackApp).filter(SlackApp.slug == slug).first()
     if not app:
         raise HTTPException(status_code=404, detail=f"Slack app '{slug}' not found")
-    return _slack_app_to_response(app)
+    return _slack_app_to_response(app, include_secrets=include_secrets)
 
 
 @router.patch("/slack/apps/{slug}", response_model=SlackAppResponse)
@@ -2081,21 +2178,26 @@ def delete_slack_app(
     return {"deleted": True, "slug": slug}
 
 
-def _slack_app_to_response(app: SlackApp) -> SlackAppResponse:
+def _slack_app_to_response(
+    app: SlackApp, *, include_secrets: bool = False
+) -> SlackAppResponse:
     """Convert a SlackApp model to response."""
-    return SlackAppResponse(
-        slug=app.slug,
-        display_name=app.display_name,
-        app_id=app.app_id,
-        client_id=app.client_id,
-        client_secret=app.client_secret,
-        signing_secret=app.signing_secret,
-        bot_scopes=app.bot_scopes,
-        oauth_redirect_url=app.oauth_redirect_url,
-        is_active=app.is_active,
-        created_at=app.created_at,
-        updated_at=app.updated_at,
-    )
+    payload = {
+        "slug": app.slug,
+        "display_name": app.display_name,
+        "app_id": app.app_id,
+        "client_id": app.client_id,
+        "client_secret": app.client_secret,
+        "signing_secret": app.signing_secret,
+        "bot_scopes": app.bot_scopes,
+        "oauth_redirect_url": app.oauth_redirect_url,
+        "is_active": app.is_active,
+        "created_at": app.created_at,
+        "updated_at": app.updated_at,
+    }
+    if not include_secrets:
+        payload = redact_slack_app_secrets(payload)
+    return SlackAppResponse(**payload)
 
 
 # ==================== Slack Installation Storage ====================

@@ -8,6 +8,7 @@ from .encryption import (
     encrypt,
     encrypt_dict,
     get_encryption_service,
+    reset_encryption_service,
 )
 from .sqlalchemy_types import EncryptedJSONB, EncryptedText
 
@@ -19,6 +20,7 @@ __all__ = [
     "encrypt_dict",
     "decrypt_dict",
     "get_encryption_service",
+    "reset_encryption_service",
     "EncryptedText",
     "EncryptedJSONB",
 ]

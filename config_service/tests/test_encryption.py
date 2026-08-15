@@ -8,12 +8,17 @@ import pytest
 @pytest.fixture(autouse=True)
 def set_encryption_key():
     """Set encryption key for tests."""
-    # Use a test-specific key
-    os.environ["ENCRYPTION_KEY"] = (
-        "test-key-for-encryption-must-be-at-least-32-bytes-long-for-fernet"
-    )
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode()
+    os.environ["ENCRYPTION_KEY"] = key
+    from src.crypto.encryption import reset_encryption_service
+
+    reset_encryption_service()
     yield
     os.environ.pop("ENCRYPTION_KEY", None)
+    os.environ.pop("ENCRYPTION_KEY_PREVIOUS", None)
+    reset_encryption_service()
 
 
 def test_encrypt_decrypt_text():
@@ -127,7 +132,22 @@ def test_sqlalchemy_encrypted_text():
     assert type_obj.process_bind_param(None, None) is None
     assert type_obj.process_result_value(None, None) is None
 
-    # Test backwards compat (plaintext)
+def test_sqlalchemy_encrypted_text_plaintext_fail_closed(monkeypatch):
+    """Plaintext secret columns fail closed outside local dev."""
+    from src.crypto import EncryptionError
+    from src.crypto.sqlalchemy_types import EncryptedText
+
+    monkeypatch.delenv("CONFIG_MODE", raising=False)
+    type_obj = EncryptedText()
+    with pytest.raises(EncryptionError, match="Refusing to return plaintext"):
+        type_obj.process_result_value("plaintext", None)
+
+
+def test_sqlalchemy_encrypted_text_plaintext_allowed_local(monkeypatch):
+    from src.crypto.sqlalchemy_types import EncryptedText
+
+    monkeypatch.setenv("CONFIG_MODE", "local")
+    type_obj = EncryptedText()
     assert type_obj.process_result_value("plaintext", None) == "plaintext"
 
 
@@ -164,11 +184,12 @@ def test_encryption_error_handling():
 def test_encryption_service_initialization_error():
     """Test EncryptionService initialization without key."""
     os.environ.pop("ENCRYPTION_KEY", None)
-    os.environ.pop("TOKEN_PEPPER", None)
+    os.environ.pop("ENCRYPTION_KEY_PREVIOUS", None)
 
-    from src.crypto import EncryptionError, EncryptionService
+    from src.crypto import EncryptionError, EncryptionService, reset_encryption_service
 
-    with pytest.raises(EncryptionError, match="ENCRYPTION_KEY or TOKEN_PEPPER"):
+    reset_encryption_service()
+    with pytest.raises(EncryptionError, match="ENCRYPTION_KEY must be set"):
         EncryptionService()
 
 

@@ -21,6 +21,7 @@ from ...core.hierarchical_config import (
     get_fields_requiring_approval,
     get_full_default_config,
 )
+from ...core.secret_redaction import redact_config_for_client_response
 from ...core.security import get_token_pepper
 from ...core.yaml_config import write_config_to_yaml
 from ...db import config_repository as repo
@@ -319,7 +320,7 @@ async def get_effective_config(
 
     return EffectiveConfigResponse(
         node_id=node_id,
-        effective_config=effective,
+        effective_config=redact_config_for_client_response(effective),
         computed_at=config.effective_config_computed_at if config else None,
         hierarchy=hierarchy,
     )
@@ -747,7 +748,7 @@ async def get_my_config(
 
     return EffectiveConfigResponse(
         node_id=team_node_id,
-        effective_config=effective,
+        effective_config=redact_config_for_client_response(effective),
         computed_at=config.effective_config_computed_at if config else None,
         hierarchy=hierarchy,
     )
