@@ -9,7 +9,7 @@ import io
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -303,12 +303,22 @@ def create_agent_run(
 
 @router.patch("/agent-runs/{run_id}", response_model=AgentRunResponse)
 def complete_agent_run(
+    org_id: str,
     run_id: str,
     request: AgentRunCompleteRequest,
     session: Session = Depends(get_db),
     admin: AdminPrincipal = Depends(require_admin),
 ):
     """Mark an agent run as complete (called by orchestrator when run finishes)."""
+    existing = repository.get_agent_run(session, run_id=run_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+
+    check_org_access(admin, existing.org_id)
+
+    if org_id != existing.org_id:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+
     run = repository.complete_agent_run(
         session,
         run_id=run_id,
@@ -321,8 +331,6 @@ def complete_agent_run(
     )
 
     if run is None:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Agent run not found")
 
     session.commit()

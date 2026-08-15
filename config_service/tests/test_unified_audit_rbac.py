@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
@@ -143,3 +145,44 @@ def test_org_admin_denied_foreign_agent_run_create():
         },
     )
     assert r.status_code == 403
+
+
+def test_org_admin_denied_foreign_agent_run_complete(monkeypatch):
+    admin = AdminPrincipal(
+        auth_kind="org_admin_token",
+        subject="org_admin:org1",
+        email=None,
+        claims={},
+        org_id="org1",
+    )
+    client = TestClient(_audit_app(admin))
+
+    foreign_run = SimpleNamespace(org_id="org2")
+    monkeypatch.setattr(
+        audit_routes.repository,
+        "get_agent_run",
+        lambda *a, **k: foreign_run,
+    )
+
+    complete_called = []
+
+    def _fail_if_complete(*args, **kwargs):
+        complete_called.append(True)
+        return None
+
+    monkeypatch.setattr(
+        audit_routes.repository,
+        "complete_agent_run",
+        _fail_if_complete,
+    )
+
+    r = client.patch(
+        "/api/v1/admin/orgs/org1/unified-audit/agent-runs/run-foreign",
+        json={
+            "run_id": "run-foreign",
+            "status": "completed",
+        },
+    )
+    assert r.status_code == 403
+    assert "org1" in r.json()["detail"]
+    assert complete_called == []
