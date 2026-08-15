@@ -121,7 +121,7 @@ Simple-mode assumes callers on the agent and datastore ports are trusted:
 - **No application-layer auth on several control endpoints** — e.g. `POST /interrupt`, `POST /threads/{id}/queue-message`, and `POST /answer` on [`server_simple.py`](sre-agent/server_simple.py) accept requests without validating a team token. The web UI BFF adds session auth; chat bots and direct API callers must rely on network placement.
 - **No filesystem or network isolation** — investigations run in the API process with access to mounted credentials and cluster tools.
 - **Bind to localhost or a private network** — for local dev, published ports (`3002`, `8001`, `8081`, `5433`, Neo4j) are convenient; do **not** expose them on the public internet without a reverse proxy, firewall rules, and the hardening checklist below.
-- **Do not port-forward simple-mode to the internet** — treat any host that can reach `sre-agent:8001` as able to start investigations.
+- **Do not port-forward simple-mode to the internet** — treat any host that can reach the agent API (compose host port `8001`, in-cluster `sre-agent:8000`) as able to start investigations.
 
 For production isolation, use sandbox mode ([`server.py`](sre-agent/server.py) with per-thread Kubernetes sandboxes). See [Deployment modes](docs/ARCHITECTURE.md#deployment-modes).
 
@@ -154,7 +154,7 @@ Reporting DoS/DDoS as security vulnerabilities is [out of scope](#out-of-scope) 
 
 Use this before exposing OpenSRE beyond a developer laptop:
 
-- [ ] Agent (`8001`), config-service (`8081`), Postgres (`5432`/`5433`), and Neo4j (`7687`/`7688`) are **not** reachable from the public internet
+- [ ] Agent (`8001`), config-service (`8081`), Postgres (`5432`/`5433`), and Neo4j Bolt (`7687`/`7688`) plus Browser (`7474`/`7475`) are **not** reachable from the public internet
 - [ ] Web UI and chat-bot webhooks are served **only over HTTPS** (TLS at ingress/reverse proxy)
 - [ ] Reverse proxy enforces **rate limits**, **max body size**, and **timeouts** on `/investigate` and SSE routes
 - [ ] **Concurrent investigations** are capped at the proxy or orchestration layer if multiple untrusted users share one install
