@@ -17,6 +17,8 @@ from src.api.auth import AdminPrincipal, authenticate_admin_request
 from src.db import repository
 from src.db.session import db_session
 
+from .admin import check_org_access
+
 router = APIRouter(prefix="/unified-audit", tags=["Unified Audit"])
 
 
@@ -129,6 +131,7 @@ def list_unified_audit(
     - config: Configuration changes
     - agent: Agent run records
     """
+    check_org_access(admin, org_id)
     source_list = sources.split(",") if sources else None
     event_type_list = event_types.split(",") if event_types else None
 
@@ -193,6 +196,7 @@ def export_audit_csv(
     admin: AdminPrincipal = Depends(require_admin),
 ):
     """Export audit log as CSV for compliance reporting."""
+    check_org_access(admin, org_id)
     source_list = sources.split(",") if sources else None
     event_type_list = event_types.split(",") if event_types else None
 
@@ -261,6 +265,7 @@ def create_agent_run(
     admin: AdminPrincipal = Depends(require_admin),
 ):
     """Create a new agent run record (called by orchestrator at run start)."""
+    check_org_access(admin, request.org_id)
     run = repository.create_agent_run(
         session,
         run_id=request.run_id,
@@ -357,6 +362,7 @@ def list_agent_runs(
     admin: AdminPrincipal = Depends(require_admin),
 ):
     """List agent runs with filtering."""
+    check_org_access(admin, org_id)
     runs = repository.list_agent_runs(
         session,
         org_id=org_id,
