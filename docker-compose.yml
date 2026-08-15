@@ -185,9 +185,10 @@ services:
       - WRITEUP_LLM_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-6}
       # Other services
       - LMNR_PROJECT_API_KEY=${LMNR_PROJECT_API_KEY:-}
-      # AWS + EKS connectivity (opt-in via --profile host-creds / make dev-host-creds).
-      # Default `make dev` does NOT mount host ~/.aws or ~/.kube. When host-creds
-      # is enabled, ~/.aws is read-write (SSO token refresh) and ~/.kube is ro.
+      # AWS + EKS connectivity (opt-in via make dev-host-creds /
+      # docker-compose.host-creds.yml). Default `make dev` does NOT mount host
+      # ~/.aws or ~/.kube. When host-creds is enabled, ~/.aws is read-write
+      # (SSO token refresh) and ~/.kube is ro.
       # AWS_PROFILE/AWS_DEFAULT_REGION: used by boto3/kubectl skill scripts when
       # host creds are mounted. Override in .env for your account/region.
       - AWS_PROFILE=${AWS_PROFILE:-default}

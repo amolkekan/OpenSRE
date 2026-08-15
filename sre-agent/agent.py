@@ -604,6 +604,7 @@ class InteractiveAgentSession:
         from agent_permissions import (
             evaluate_tool_permission,
             parse_permission_mode,
+            resolve_tool_permission_lists,
             sdk_permission_mode,
         )
 
@@ -815,6 +816,10 @@ class InteractiveAgentSession:
                 tc = root_config.tools
                 allowed_tools = [t for t in self.DEFAULT_TOOLS if t not in tc.disabled]
 
+        allowed_tools, disallowed_tools = resolve_tool_permission_lists(
+            allowed_tools, permission_mode
+        )
+
         options_kwargs = dict(
             cwd=cwd,
             allowed_tools=allowed_tools,
@@ -841,6 +846,8 @@ class InteractiveAgentSession:
             # as --resume (empty string and None both mean "no prior session").
             **({"resume": self.resume} if self.resume else {}),
         )
+        if disallowed_tools:
+            options_kwargs["disallowed_tools"] = disallowed_tools
 
         # Apply model settings and execution limits from root agent config
         if root_config:

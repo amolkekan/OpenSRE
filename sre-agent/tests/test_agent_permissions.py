@@ -6,6 +6,7 @@ from agent_permissions import (
     AgentPermissionMode,
     evaluate_tool_permission,
     parse_permission_mode,
+    resolve_tool_permission_lists,
     sdk_permission_mode,
 )
 
@@ -45,6 +46,23 @@ class TestSdkPermissionMode:
         assert sdk_permission_mode(AgentPermissionMode.ACCEPT_EDITS) == "acceptEdits"
 
 
+class TestResolveToolPermissionLists:
+    def test_restricted_removes_write_edit_from_allowed(self):
+        allowed, disallowed = resolve_tool_permission_lists(
+            ["Read", "Write", "Edit", "Bash"], AgentPermissionMode.RESTRICTED
+        )
+        assert allowed == ["Read", "Bash"]
+        assert disallowed == ["Edit", "Write"]
+
+    def test_accept_edits_keeps_write_edit_in_allowed(self):
+        tools = ["Read", "Write", "Edit", "Bash"]
+        allowed, disallowed = resolve_tool_permission_lists(
+            tools, AgentPermissionMode.ACCEPT_EDITS
+        )
+        assert allowed == tools
+        assert disallowed == []
+
+
 class TestEvaluateToolPermission:
     def test_restricted_denies_write(self):
         decision = evaluate_tool_permission("Write", AgentPermissionMode.RESTRICTED)
@@ -70,3 +88,26 @@ class TestEvaluateToolPermission:
     def test_accept_edits_allows_edit(self):
         decision = evaluate_tool_permission("Edit", AgentPermissionMode.ACCEPT_EDITS)
         assert decision.allowed is True
+
+
+class TestInteractiveAgentSessionToolOptions:
+    """Assert SDK options on the session, not only the permission helper."""
+
+    def test_restricted_mode_session_excludes_write_edit(self, monkeypatch):
+        monkeypatch.delenv("AGENT_PERMISSION_MODE", raising=False)
+        from agent import InteractiveAgentSession
+
+        session = InteractiveAgentSession(thread_id="t-restricted-perms")
+        assert "Write" not in session.options.allowed_tools
+        assert "Edit" not in session.options.allowed_tools
+        assert "Write" in session.options.disallowed_tools
+        assert "Edit" in session.options.disallowed_tools
+
+    def test_accept_edits_mode_session_includes_write_edit(self, monkeypatch):
+        monkeypatch.setenv("AGENT_PERMISSION_MODE", "acceptEdits")
+        from agent import InteractiveAgentSession
+
+        session = InteractiveAgentSession(thread_id="t-accept-edits-perms")
+        assert "Write" in session.options.allowed_tools
+        assert "Edit" in session.options.allowed_tools
+        assert session.options.disallowed_tools == []

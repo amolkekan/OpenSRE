@@ -1,8 +1,10 @@
 """Tool permission gating for the Claude Agent SDK session.
 
-AGENT_PERMISSION_MODE controls how can_use_tool treats high-risk file tools:
-  - restricted (default): deny Write and Edit; investigations still use Bash/Read.
-  - acceptEdits: auto-approve all tools (legacy local-dev behaviour).
+AGENT_PERMISSION_MODE controls how high-risk file tools (Write/Edit) are gated:
+  - restricted (default): remove Write/Edit from allowed_tools and pass
+    disallowed_tools so the CLI blocks them (can_use_tool is not invoked for
+    tools already listed in allowed_tools).
+  - acceptEdits: keep Write/Edit in allowed_tools (legacy local-dev behaviour).
 """
 
 from __future__ import annotations
@@ -50,6 +52,22 @@ def sdk_permission_mode(mode: AgentPermissionMode) -> str:
     if mode == AgentPermissionMode.ACCEPT_EDITS:
         return "acceptEdits"
     return "default"
+
+
+def resolve_tool_permission_lists(
+    allowed_tools: list[str], mode: AgentPermissionMode
+) -> tuple[list[str], list[str]]:
+    """Return (allowed_tools, disallowed_tools) for ClaudeAgentOptions.
+
+    Restricted mode must not list Write/Edit in allowed_tools — the SDK
+    auto-approves those without calling can_use_tool. disallowed_tools enforces
+    CLI-level denial as a second layer.
+    """
+    if mode == AgentPermissionMode.ACCEPT_EDITS:
+        return allowed_tools, []
+    disallowed = sorted(HIGH_RISK_FILE_TOOLS)
+    filtered = [tool for tool in allowed_tools if tool not in HIGH_RISK_FILE_TOOLS]
+    return filtered, disallowed
 
 
 def evaluate_tool_permission(
