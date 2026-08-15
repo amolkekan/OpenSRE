@@ -82,3 +82,15 @@ spec:
       ports:
         - protocol: TCP
           port: 8002
+    # sre-agent file proxy (Slack/Teams attachments: GET /proxy/files/{token})
+    # Service DNS: opensre-server-svc.<SERVER_NAMESPACE>:8000 — default SERVER_NAMESPACE=opensre-prod
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: opensre-prod
+          podSelector:
+            matchLabels:
+              app: opensre-agent
+      ports:
+        - protocol: TCP
+          port: 8000

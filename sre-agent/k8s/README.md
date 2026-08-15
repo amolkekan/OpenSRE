@@ -27,6 +27,7 @@ kubectl apply -f sre-agent/k8s/sandbox-network-policy.yaml -n <sandbox-namespace
 | k8s-gateway | 8085 | `app=opensre-k8s-gateway` |
 | RAG service | 8000 | `app.kubernetes.io/name` in `opensre-ultimate-rag`, `opensre-knowledge-base`, or `app=opensre-rag` |
 | credential-resolver | 8002 | namespace `opensre-prod`, `app=credential-resolver` |
+| sre-agent file proxy | 8000 | namespace `opensre-prod`, `app=opensre-agent` (Slack/Teams `/proxy/files`) |
 
 Each application has its own egress rule with a single port — rules are not combined across services.
 
@@ -42,6 +43,10 @@ Sandboxes call the in-cluster Service `opensre-rag.<namespace>:8000`, but Networ
 **Credential-resolver namespace**
 
 The cross-namespace rule pins credential-resolver to namespace `opensre-prod` (default for `CREDENTIAL_RESOLVER_NAMESPACE` in `sandbox_manager.py`). Edit the `namespaceSelector` if your install uses a different platform namespace.
+
+**sre-agent file proxy**
+
+Sandboxes download Slack/Teams attachments from `http://opensre-server-svc.<SERVER_NAMESPACE>:8000/proxy/files/{token}` (default `SERVER_NAMESPACE=opensre-prod`). The policy allows TCP 8000 to pods labeled `app=opensre-agent` in that namespace. Edit if your agent Deployment uses a different label or namespace.
 
 If your deployment uses different component labels for other services, edit the corresponding `podSelector` blocks before applying.
 

@@ -164,6 +164,15 @@ def test_in_cluster_services_use_separate_port_rules():
     assert len(rag_rules) == 1, "expected one RAG egress rule on port 8000"
     assert _rule_ports(rag_rules[0]) == {8000}
 
+    # Lock real backend label values so the prior RAG-selector fix cannot regress.
+    rag_names: set[str] = set()
+    for peer in _peer_selectors(rag_rules[0]):
+        for expr in peer.get("podSelector", {}).get("matchExpressions", []):
+            if expr.get("key") == "app.kubernetes.io/name" and expr.get("operator") == "In":
+                rag_names.update(expr.get("values", []))
+    assert {"opensre-ultimate-rag", "opensre-knowledge-base"}.issubset(rag_names), rag_names
+    assert _pod_label(rag_rules[0], "app") == "opensre-rag"
+
     multi_service_rules = [
         rule
         for rule in _egress_rules(policy)
@@ -173,6 +182,18 @@ def test_in_cluster_services_use_separate_port_rules():
     assert not multi_service_rules, (
         "config-service, gateway, and RAG must not share one combined ports list"
     )
+
+
+def test_sre_agent_file_proxy_allowlisted():
+    """Slack/Teams attachments download via opensre-server-svc /proxy/files."""
+    policy = _load_policy_documents()[0]
+    proxy_rules = [
+        rule
+        for rule in _egress_rules(policy)
+        if _pod_label(rule, "app") == "opensre-agent" and _rule_ports(rule) == {8000}
+    ]
+    assert len(proxy_rules) == 1, "expected one opensre-agent :8000 file-proxy egress rule"
+    assert _namespace_name(proxy_rules[0]) == "opensre-prod"
 
 
 def test_warmpool_templates_include_sandbox_isolation_label():
