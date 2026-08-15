@@ -1,7 +1,6 @@
 """Route-level tests for secret redaction and internal credential APIs."""
 
 import os
-from datetime import datetime
 from types import SimpleNamespace
 from typing import Generator
 

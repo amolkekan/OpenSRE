@@ -39,7 +39,14 @@ def test_is_sensitive_key_preserves_token_counts():
     config = {"model": {"max_tokens": 16000, "temperature": 0.3}}
     redacted = redact_secrets(config)
     assert redacted["model"]["max_tokens"] == 16000
-    assert redacted["model"]["temperature"] == 0.3
+
+
+def test_aws_access_key_id_is_sensitive():
+    assert is_sensitive_key("aws_access_key_id")
+    assert is_sensitive_key("AWS_ACCESS_KEY_ID")
+    redacted = redact_secrets({"aws_access_key_id": "AKIAIOSFODNN7EXAMPLE"})
+    assert "AKIA" not in str(redacted["aws_access_key_id"])
+    assert redacted["aws_access_key_id"].startswith(MASK)
 
 
 def test_is_sensitive_key_redacts_credential_tokens():

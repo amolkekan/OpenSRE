@@ -19,6 +19,7 @@ EXACT_SENSITIVE_KEYS: Set[str] = {
     "access_key",
     "api_key",
     "app_key",
+    "aws_access_key_id",
     "bot_token",
     "client_secret",
     "password",
@@ -75,6 +76,9 @@ def is_sensitive_key(key: str) -> bool:
     if lowered.endswith("_tokens") or lowered == "tokens":
         return False
     if any(term in lowered for term in SENSITIVE_KEY_SUBSTRINGS):
+        return True
+    # AWS-style access key id fields (schema type=secret) without "secret" in the name.
+    if "access_key" in lowered:
         return True
     return bool(_TOKEN_FIELD_RE.search(lowered))
 
@@ -219,22 +223,4 @@ def redact_slack_app_secrets(app_data: Dict[str, Any]) -> Dict[str, Any]:
         else:
             redacted[f"has_{field}"] = bool(redacted.get(field))
             redacted.pop(field, None)
-    return redacted
-
-
-def redact_slack_installation_tokens(installation_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Redact Slack installation tokens for non-credential API responses."""
-    redacted = copy.deepcopy(installation_data)
-    for field in (
-        "bot_token",
-        "user_token",
-        "incoming_webhook_url",
-    ):
-        if field in redacted and redacted[field]:
-            redacted[field] = mask_secret_value(str(redacted[field]))
-            redacted[f"has_{field}"] = True
-        else:
-            redacted[f"has_{field}"] = bool(redacted.get(field))
-            if field in redacted:
-                redacted.pop(field, None)
     return redacted
