@@ -1,0 +1,16 @@
+# Optional host credential mounts for sre-agent (local dev only).
+#
+# Merged by `make dev-host-creds` (or manually):
+#   docker compose -f docker-compose.yml -f docker-compose.host-creds.yml up
+#
+# Default `make dev` does NOT use this file — the agent container has no access
+# to host ~/.aws, ~/.kube, or Argo CD CLI session files unless you opt in.
+
+services:
+  sre-agent:
+    volumes:
+      # ~/.aws is read-write so the aws CLI can refresh expired SSO access tokens
+      # (writes to ~/.aws/sso/cache). ~/.kube and Argo CD config stay read-only.
+      - ${HOME}/.aws:/home/agent/.aws
+      - ${HOME}/.kube:/home/agent/.kube:ro
+      - ${HOME}/.config/argocd:/home/agent/.config/argocd:ro

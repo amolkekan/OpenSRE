@@ -2,7 +2,7 @@
 #
 # Run 'make help' to see all available targets.
 
-.PHONY: help setup-llm dev dev-slack dev-teams stop logs logs-agent logs-config logs-web status clean db-shell \
+.PHONY: help setup-llm dev dev-host-creds dev-slack dev-teams stop logs logs-agent logs-config logs-web status clean db-shell \
         kind-create kind-delete otel-install otel-images otel-wait e2e-verify \
         e2e-setup e2e-teardown e2e-agent e2e-status e2e-token \
         e2e-setup-eks e2e-teardown-eks eks-port-forward eks-port-forward-stop \
@@ -51,6 +51,7 @@ FRONTEND_PORT    ?= 8090
 # (E2E fast-fail: AGENT_TIMEOUT_SECONDS=600, kind networking)
 # is NOT auto-merged into everyday `make dev`. E2E targets opt in explicitly.
 COMPOSE_DEV      = docker compose -f docker-compose.yml
+COMPOSE_DEV_HOST_CREDS = docker compose -f docker-compose.yml -f docker-compose.host-creds.yml
 COMPOSE_E2E      = docker compose -f docker-compose.yml -f docker-compose.override.yml
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -81,6 +82,7 @@ help:
 	@echo ""
 	@echo "Local Development:"
 	@echo "  make dev                Start all services (postgres, config, neo4j, agent, web-ui)"
+	@echo "  make dev-host-creds     Start core + mount host AWS/kube/Argo CD creds"
 	@echo "  make dev-slack          Start all services + Slack bot"
 	@echo "  make dev-teams          Start all services + Teams bot"
 	@echo "  make stop               Stop all services"
@@ -139,6 +141,10 @@ setup-llm:
 
 dev: setup-llm
 	$(COMPOSE_DEV) up -d --build
+	@bash scripts/post-startup-banner.sh
+
+dev-host-creds: setup-llm
+	$(COMPOSE_DEV_HOST_CREDS) up -d --build
 	@bash scripts/post-startup-banner.sh
 
 dev-slack: setup-llm

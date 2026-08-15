@@ -601,6 +601,14 @@ class InteractiveAgentSession:
         # (options_kwargs.hooks below) they are wrapped in async trampolines
         # because the SDK's HookCallback type requires an Awaitable return.
 
+        from agent_permissions import (
+            evaluate_tool_permission,
+            parse_permission_mode,
+            sdk_permission_mode,
+        )
+
+        permission_mode = parse_permission_mode()
+
         # Callback for tool permission requests (handles AskUserQuestion)
         async def can_use_tool_handler(tool_name: str, input_data: dict, context):
             """Handle tool permission requests, including AskUserQuestion."""
@@ -662,8 +670,14 @@ class InteractiveAgentSession:
                         message="User did not respond. Continue without this information."
                     )
 
-            # Auto-approve other tools
-            from claude_agent_sdk.types import PermissionResultAllow
+            from claude_agent_sdk.types import (
+                PermissionResultAllow,
+                PermissionResultDeny,
+            )
+
+            decision = evaluate_tool_permission(tool_name, permission_mode)
+            if not decision.allowed:
+                return PermissionResultDeny(message=decision.message)
 
             return PermissionResultAllow(updated_input=input_data)
 
@@ -804,7 +818,7 @@ class InteractiveAgentSession:
         options_kwargs = dict(
             cwd=cwd,
             allowed_tools=allowed_tools,
-            permission_mode="acceptEdits",
+            permission_mode=sdk_permission_mode(permission_mode),
             can_use_tool=can_use_tool_handler,
             include_partial_messages=True,  # Needed to get parent_tool_use_id for subagent tracking
             setting_sources=["user", "project"],  # Loads .claude/skills/
