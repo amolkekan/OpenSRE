@@ -200,6 +200,8 @@ services:
       # Bitbucket (vcs-bitbucket skill): BKT_* vars come from env_file (.env) above.
       # Do not add empty BKT_PROJECT/BKT_REPO defaults here — unset is better than "".
       # GitHub (vcs-github skill): GITHUB_TOKEN / GITHUB_REPOSITORY come from env_file (.env) above.
+      # Service token for chat bots and sandbox manager → simple-mode agent APIs.
+      - INVESTIGATE_AUTH_TOKEN=${INVESTIGATE_AUTH_TOKEN:-}
     depends_on:
       config-service:
         condition: service_healthy
@@ -296,6 +298,8 @@ services:
       - SRE_AGENT_URL=http://sre-agent:8000
       - CONFIG_SERVICE_URL=http://config-service:8080
       - CONFIG_MODE=${CONFIG_MODE:-}
+      # Must match sre-agent INVESTIGATE_AUTH_TOKEN when agent auth is enabled.
+      - INVESTIGATE_AUTH_TOKEN=${INVESTIGATE_AUTH_TOKEN:-}
     depends_on:
       - sre-agent
     security_opt:
@@ -335,6 +339,8 @@ services:
     environment:
       - SRE_AGENT_URL=http://sre-agent:8000
       - PORT=3978
+      # Must match sre-agent INVESTIGATE_AUTH_TOKEN when agent auth is enabled.
+      - INVESTIGATE_AUTH_TOKEN=${INVESTIGATE_AUTH_TOKEN:-}
     ports:
       - "3978:3978"
     depends_on:

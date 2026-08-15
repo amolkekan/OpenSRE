@@ -141,6 +141,47 @@ def test_sandbox_execute_200_with_service_token(auth_enabled, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_sandbox_sessions_401_without_token(auth_enabled):
+    import sandbox_server
+
+    client = TestClient(sandbox_server.app)
+    resp = client.get("/sessions")
+    assert resp.status_code == 401
+
+
+def test_sandbox_sessions_200_with_service_token(auth_enabled):
+    import sandbox_server
+
+    client = TestClient(sandbox_server.app)
+    resp = client.get(
+        "/sessions",
+        headers={"Authorization": "Bearer service-token-secret"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"sessions": []}
+
+
+def test_sandbox_cleanup_401_without_token(auth_enabled):
+    import sandbox_server
+
+    client = TestClient(sandbox_server.app)
+    resp = client.post("/cleanup", params={"thread_id": "t1"})
+    assert resp.status_code == 401
+
+
+def test_sandbox_cleanup_200_with_service_token(auth_enabled):
+    import sandbox_server
+
+    client = TestClient(sandbox_server.app)
+    resp = client.post(
+        "/cleanup",
+        params={"thread_id": "missing"},
+        headers={"Authorization": "Bearer service-token-secret"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "not_found", "thread_id": "missing"}
+
+
 def test_sandbox_router_401_without_token(auth_enabled):
     import sys
     from pathlib import Path

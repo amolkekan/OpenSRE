@@ -134,7 +134,9 @@ def _require_sandbox_auth(request: Request) -> AgentAuthContext:
 
 
 @app.get("/sessions")
-async def list_sessions():
+async def list_sessions(
+    _auth: AgentAuthContext = Depends(_require_sandbox_auth),
+):
     """List active sessions (for debugging)."""
     return {
         "sessions": [
@@ -632,7 +634,10 @@ async def answer_question(
 
 
 @app.post("/cleanup")
-async def cleanup_session(thread_id: str):
+async def cleanup_session(
+    thread_id: str,
+    _auth: AgentAuthContext = Depends(_require_sandbox_auth),
+):
     """
     Manually cleanup a session (for testing/debugging).
     Sessions are automatically cleaned up when sandbox is destroyed.
