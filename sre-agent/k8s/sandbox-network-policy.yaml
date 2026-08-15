@@ -1,0 +1,72 @@
+# OpenSRE sandbox egress NetworkPolicy
+#
+# Default-deny egress for investigation sandbox pods (label opensre.in/isolation=sandbox).
+# Envoy sidecar traffic to credential-resolver and in-cluster OpenSRE services is allowlisted;
+# all other egress is blocked when the cluster CNI enforces NetworkPolicy.
+#
+# Apply in the namespace where sandboxes run (same namespace as sandbox_manager.namespace):
+#   kubectl apply -f sre-agent/k8s/sandbox-network-policy.yaml -n <sandbox-namespace>
+#
+# Credential-resolver and sandbox-router often live in a separate platform namespace;
+# the cross-namespace rules use pod label selectors — adjust values if your install differs.
+# See sre-agent/k8s/README.md for label expectations.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opensre-sandbox-egress
+  labels:
+    app: opensre
+    component: sandbox-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      opensre.in/isolation: sandbox
+  policyTypes:
+    - Egress
+  egress:
+    # Cluster DNS (kube-dns or CoreDNS in kube-system)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # config-service, k8s-gateway, and RAG in the sandbox namespace
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - opensre-config-service
+                  - opensre-k8s-gateway
+                  - opensre-rag
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8085
+        - protocol: TCP
+          port: 8000
+    # credential-resolver (may run in a dedicated platform namespace)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app: credential-resolver
+      ports:
+        - protocol: TCP
+          port: 8002
+    # sandbox-router (server-to-sandbox routing; warm-pool health checks)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app: sandbox-router
+      ports:
+        - protocol: TCP
+          port: 8080

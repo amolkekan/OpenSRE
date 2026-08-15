@@ -40,6 +40,21 @@ from kubernetes.client.rest import ApiException
 # K8s names must be lowercase alphanumeric + hyphens, 1-63 chars
 _K8S_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{0,61}[a-z0-9]$")
 
+# Pod labels for sandbox workloads — must stay aligned with
+# sre-agent/k8s/sandbox-network-policy.yaml podSelector.
+SANDBOX_POD_LABEL_APP = "opensre-sandbox"
+SANDBOX_ISOLATION_LABEL_KEY = "opensre.in/isolation"
+SANDBOX_ISOLATION_LABEL_VALUE = "sandbox"
+
+
+def sandbox_pod_labels(thread_id: str) -> dict[str, str]:
+    """Return podTemplate.metadata.labels for an investigation sandbox."""
+    return {
+        "app": SANDBOX_POD_LABEL_APP,
+        SANDBOX_ISOLATION_LABEL_KEY: SANDBOX_ISOLATION_LABEL_VALUE,
+        "thread-id": thread_id,
+    }
+
 
 def _validate_thread_id(thread_id: str) -> None:
     """Validate thread_id is safe for use in K8s names and labels."""
@@ -592,11 +607,7 @@ static_resources:
             "spec": {
                 "podTemplate": {
                     "metadata": {
-                        "labels": {
-                            "app": "opensre-sandbox",  # Different from opensre-agent to avoid service routing
-                            "opensre.in/isolation": "sandbox",  # NetworkPolicy selector
-                            "thread-id": thread_id,
-                        }
+                        "labels": sandbox_pod_labels(thread_id),
                     },
                     "spec": {
                         # When SANDBOX_DIRECT_K8S=true, mount the SA token so the sandbox

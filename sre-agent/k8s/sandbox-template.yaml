@@ -15,7 +15,8 @@ spec:
   podTemplate:
     metadata:
       labels:
-        app: opensre-agent
+        app: opensre-sandbox
+        opensre.in/isolation: sandbox
         component: investigation
     spec:
       containers:
