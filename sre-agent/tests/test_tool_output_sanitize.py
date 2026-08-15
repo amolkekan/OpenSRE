@@ -213,3 +213,59 @@ def test_invalid_token_message_redacted():
     sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
     assert "expected-claim-missing" not in sanitized
     assert "token=<redacted>" in sanitized
+
+
+def test_json_access_token_and_client_secret_redacted():
+    access = "supersecretaccesstoken123"
+    client = "supersecretclientsecret123"
+    body = json.dumps({"access_token": access, "client_secret": client})
+    sanitized, _ = sanitize_tool_end_payload("Read", None, body, None)
+    assert access not in sanitized
+    assert client not in sanitized
+    assert '"access_token": "<redacted>"' in sanitized
+    assert '"client_secret": "<redacted>"' in sanitized
+
+
+def test_url_userinfo_password_redacted():
+    cases = [
+        ("https://admin:sekretpass@db.example.com:5432/app", "sekretpass"),
+        ("postgres://appuser:dbpass12345@localhost:5432/mydb", "dbpass12345"),
+    ]
+    for url, secret in cases:
+        sanitized, _ = sanitize_tool_end_payload("Read", None, url, None)
+        assert secret not in sanitized
+        assert ":<redacted>@" in sanitized
+
+
+def test_plain_url_without_userinfo_unchanged():
+    url = "https://api.example.com/v1/users?page=1"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, url, None)
+    assert sanitized == url
+
+
+def test_curl_u_user_password_redacted():
+    secret = "curlsecretpass123"
+    command = f"curl -u deploy:{secret} https://api.example.com"
+    sanitized = sanitize_command(command)
+    assert secret not in sanitized
+    assert "deploy:<redacted>" in sanitized
+
+
+def test_prefixed_env_style_password_and_token_redacted():
+    cases = [
+        ("POSTGRES_PASSWORD=superdbpass123", "superdbpass123"),
+        ("JIRA_API_TOKEN=atlassianapitoken123", "atlassianapitoken123"),
+        ('export POSTGRES_PASSWORD="longpassvalue123"', "longpassvalue123"),
+    ]
+    for output, secret in cases:
+        sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+        assert secret not in sanitized
+        assert "<redacted>" in sanitized
+
+
+def test_json_value_with_escaped_quote_fully_redacted():
+    secret = "value-with-embedded-quote"
+    body = r'{"token": "prefix \"' + secret + r'\" suffix"}'
+    sanitized, _ = sanitize_tool_end_payload("Read", None, body, None)
+    assert secret not in sanitized
+    assert '"token": "<redacted>"' in sanitized

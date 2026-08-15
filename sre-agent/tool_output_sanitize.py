@@ -28,6 +28,16 @@ _SUMMARY_THRESHOLD = 15
 
 _REDACTED = "<redacted>"
 
+# Shared secret key names for JSON object keys and generic key=value assignments.
+# Both matchers derive from this list so they cannot drift.
+_SECRET_KEY_ALT = (
+    r"token|api[_-]?key|apikey|access[_-]?key|access[_-]?token|"
+    r"client[_-]?secret|secret|password|passwd|authorization"
+)
+
+# JSON string values may contain escaped quotes; match until an unescaped closing quote.
+_JSON_STRING_VALUE = r'"(?:[^"\\]|\\.)*"'
+
 # Secret-shaped substrings in arbitrary tool output, commands, and errors.
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Authorization / auth headers (curl -H, HTTP responses, etc.)
@@ -65,19 +75,38 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # JSON object keys: "token": "…", "api_key" : "…" (whitespace around ':').
     (
         re.compile(
-            r'(?i)("(?:token|api[_-]?key|api-key|password|secret|access[_-]?key|authorization)")\s*:\s*"[^"]*"',
+            rf'(?i)("(?:{_SECRET_KEY_ALT})")\s*:\s*{_JSON_STRING_VALUE}',
         ),
         r'\1: "' + _REDACTED + '"',
     ),
     # Generic key=value / key: value assignments (word-boundary keys only).
     (
         re.compile(
-            r"(?i)\b("
-            r"api[_-]?key|apikey|access[_-]?key|access[_-]?token|"
-            r"client[_-]?secret|secret|token|password|passwd"
-            r")\b\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?",
+            rf"(?i)\b({_SECRET_KEY_ALT})\b\s*[:=]\s*['\"]?[^\s'\"]" + r"{8,}['\"]?",
         ),
         r"\1=" + _REDACTED,
+    ),
+    # Prefixed env-style keys: POSTGRES_PASSWORD=…, JIRA_API_TOKEN=… (\b misses after '_').
+    (
+        re.compile(
+            r"(?i)(?:^|[\s\"'\\{,])"
+            r"([A-Za-z0-9_]*_(?:PASSWORD|TOKEN|SECRET|API_KEY|ACCESS_KEY))"
+            r"\s*=\s*\S+",
+        ),
+        r"\1=" + _REDACTED,
+    ),
+    # URL userinfo: scheme://user:password@host (common DB/HTTP schemes only).
+    (
+        re.compile(
+            r"(?i)((?:https?|postgres(?:ql)?|mysql|redis|mongodb(?:\+srv)?|amqp)://)"
+            r"([^:@/\s]+):([^@\s/]+)@",
+        ),
+        rf"\1\2:{_REDACTED}@",
+    ),
+    # curl -u / --user user:password
+    (
+        re.compile(r"(?i)((?:^|[\s|;&])(?:-u|--user)\s+)([^:\s]+):([^\s'\"]+)"),
+        rf"\1\2:{_REDACTED}",
     ),
     # PEM private keys.
     (
