@@ -14,10 +14,18 @@
 
 
 import asyncio
+import sys
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
+
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from agent_api_auth import verify_agent_request_auth
 
 # Initialize the FastAPI application
 app = FastAPI()
@@ -52,6 +60,8 @@ async def proxy_request(request: Request, full_path: str):
     Receives all incoming requests, determines the target sandbox from headers,
     and asynchronously proxies the request to it.
     """
+    verify_agent_request_auth(request)
+
     sandbox_id = request.headers.get("X-Sandbox-ID")
     if not sandbox_id:
         raise HTTPException(status_code=400, detail="X-Sandbox-ID header is required.")

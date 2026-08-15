@@ -27,8 +27,13 @@ from typing import Dict, List, Optional
 
 import httpx
 import investigation_lifecycle as _il
+from agent_api_auth import (
+    AgentAuthContext,
+    agent_auth_disabled,
+    verify_agent_request_auth,
+)
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from memory.neo4j_conn import NEO4J_DATABASE, get_driver
 from memory.retrieval import EpisodeRetriever
@@ -41,6 +46,13 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
+
+if agent_auth_disabled():
+    logger.warning(
+        "AGENT_AUTH_DISABLED is set — simple-mode agent APIs accept unauthenticated callers"
+    )
+else:
+    logger.info("Simple-mode agent API auth enabled (team token or INVESTIGATE_AUTH_TOKEN)")
 
 
 # ---------------------------------------------------------------------------
@@ -149,12 +161,15 @@ def _thread_tenancy(thread_id: str) -> tuple[str, str]:
     return _team_identity_by_thread.get(thread_id, (_ORG_ID, _TEAM_NODE_ID))
 
 
-def _tenancy_from_request(request: Request) -> tuple[str, str]:
-    """Resolve tenancy from request Authorization / X-OpenSRE-Team-Token; env fallback."""
-    token = _extract_team_token(request)
-    if token:
-        return _resolve_team_identity(token)
+def _tenancy_from_auth(auth: AgentAuthContext) -> tuple[str, str]:
+    """Resolve org/team from verified auth context; env fallback for service token."""
+    if auth.org_id and auth.team_node_id:
+        return auth.org_id, auth.team_node_id
     return _ORG_ID, _TEAM_NODE_ID
+
+
+def _require_agent_auth(request: Request) -> AgentAuthContext:
+    return verify_agent_request_auth(request)
 
 
 def _create_agent_run(
@@ -448,35 +463,20 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy",
-        "mode": "simple",
-        "active_sessions": len(_background_tasks),
-        "interruptible_sessions": len(_active_sessions),
-    }
+    return {"status": "healthy", "mode": "simple"}
 
 
 @app.get("/threads/{thread_id}/active")
-async def thread_active(thread_id: str):
+async def thread_active(
+    thread_id: str,
+    _auth: AgentAuthContext = Depends(_require_agent_auth),
+):
     """Whether an in-process background session can accept follow-up messages."""
     session = _active_sessions.get(thread_id)
     return {
         "active": thread_id in _background_tasks,
         "sdk_session_id": getattr(session, "session_id", None) if session else None,
     }
-
-
-def _extract_team_token(request: Request) -> Optional[str]:
-    """Parse per-request team token from Authorization or X-OpenSRE-Team-Token."""
-    auth = request.headers.get("Authorization", "")
-    if auth.lower().startswith("bearer "):
-        token = auth[7:].strip()
-        if token:
-            return token
-    header_token = request.headers.get("X-OpenSRE-Team-Token")
-    if header_token:
-        return header_token.strip() or None
-    return None
 
 
 async def _ensure_background_task(
@@ -938,7 +938,10 @@ async def create_investigation_stream(
 
 
 @app.post("/investigate")
-async def investigate(investigate_request: InvestigateRequest, http_request: Request):
+async def investigate(
+    investigate_request: InvestigateRequest,
+    auth: AgentAuthContext = Depends(_require_agent_auth),
+):
     """
     Start or continue an investigation.
 
@@ -950,10 +953,12 @@ async def investigate(investigate_request: InvestigateRequest, http_request: Req
     thread_id = investigate_request.thread_id or f"thread-{uuid.uuid4().hex[:8]}"
     is_new = thread_id not in _background_tasks
 
-    team_token = _extract_team_token(http_request)
-    if team_token:
-        _team_token_by_thread[thread_id] = team_token
-        _team_identity_by_thread[thread_id] = _resolve_team_identity(team_token)
+    if auth.token and not auth.is_service_token:
+        _team_token_by_thread[thread_id] = auth.token
+        if auth.org_id and auth.team_node_id:
+            _team_identity_by_thread[thread_id] = (auth.org_id, auth.team_node_id)
+        else:
+            _team_identity_by_thread[thread_id] = _resolve_team_identity(auth.token)
 
     print(f"🔍 Investigation: thread={thread_id}, new={is_new}")
 
@@ -1020,7 +1025,10 @@ async def investigate(investigate_request: InvestigateRequest, http_request: Req
 
 
 @app.post("/interrupt")
-async def interrupt(request: InterruptRequest):
+async def interrupt(
+    request: InterruptRequest,
+    _auth: AgentAuthContext = Depends(_require_agent_auth),
+):
     """
     Interrupt a running investigation.
 
@@ -1045,7 +1053,11 @@ async def interrupt(request: InterruptRequest):
 
 
 @app.post("/threads/{thread_id}/queue-message", response_model=QueueMessageResponse)
-async def queue_message(thread_id: str, body: QueueMessageRequest):
+async def queue_message(
+    thread_id: str,
+    body: QueueMessageRequest,
+    _auth: AgentAuthContext = Depends(_require_agent_auth),
+):
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(400, "text is required")
@@ -1075,7 +1087,10 @@ async def queue_message(thread_id: str, body: QueueMessageRequest):
 
 
 @app.post("/answer")
-async def answer(request: AnswerRequest):
+async def answer(
+    request: AnswerRequest,
+    _auth: AgentAuthContext = Depends(_require_agent_auth),
+):
     """
     Send answer to agent's AskUserQuestion.
     """
@@ -1128,8 +1143,11 @@ def _episode_row(r: dict) -> dict:
 
 
 @app.get("/memory/episodes")
-async def memory_episodes(request: Request, limit: int = 50):
-    org_id, team_node_id = _tenancy_from_request(request)
+async def memory_episodes(
+    limit: int = 50,
+    auth: AgentAuthContext = Depends(_require_agent_auth),
+):
+    org_id, team_node_id = _tenancy_from_auth(auth)
     q = (
         "MATCH (e:Episode {org_id:$org, team_node_id:$team}) "
         "OPTIONAL MATCH (e)-[:AFFECTED]->(s:Service) "
@@ -1142,8 +1160,8 @@ async def memory_episodes(request: Request, limit: int = 50):
 
 
 @app.get("/memory/stats")
-async def memory_stats(request: Request):
-    org_id, team_node_id = _tenancy_from_request(request)
+async def memory_stats(auth: AgentAuthContext = Depends(_require_agent_auth)):
+    org_id, team_node_id = _tenancy_from_auth(auth)
     q = (
         "MATCH (e:Episode {org_id:$org, team_node_id:$team}) "
         "RETURN count(e) AS total, "
@@ -1187,9 +1205,9 @@ def _overview_strategy_row(r: dict) -> dict:
 
 
 @app.get("/memory/overview")
-async def memory_overview(request: Request):
+async def memory_overview(auth: AgentAuthContext = Depends(_require_agent_auth)):
     """Aggregated dashboard data for the Memory overview tab."""
-    org_id, team_node_id = _tenancy_from_request(request)
+    org_id, team_node_id = _tenancy_from_auth(auth)
     week_ago = (
         datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
     ).isoformat()
@@ -1285,8 +1303,11 @@ async def memory_overview(request: Request):
 
 
 @app.post("/memory/search")
-async def memory_search(request: Request, payload: dict):
-    org_id, team_node_id = _tenancy_from_request(request)
+async def memory_search(
+    payload: dict,
+    auth: AgentAuthContext = Depends(_require_agent_auth),
+):
+    org_id, team_node_id = _tenancy_from_auth(auth)
     query = payload.get("query") or payload.get("prompt") or ""
     hits = _memret().search(
         query, org_id=org_id, team_node_id=team_node_id, k=payload.get("limit", 5)
@@ -1307,8 +1328,8 @@ async def memory_search(request: Request, payload: dict):
 
 
 @app.get("/memory/strategies")
-async def memory_strategies(request: Request):
-    org_id, team_node_id = _tenancy_from_request(request)
+async def memory_strategies(auth: AgentAuthContext = Depends(_require_agent_auth)):
+    org_id, team_node_id = _tenancy_from_auth(auth)
     q = (
         "MATCH (st:Strategy {org_id:$org, team_node_id:$team}) "
         "RETURN st AS st ORDER BY st.generated_at DESC"
@@ -1319,8 +1340,12 @@ async def memory_strategies(request: Request):
 
 
 @app.patch("/memory/strategies/{strategy_id}")
-async def update_memory_strategy(request: Request, strategy_id: str, payload: dict):
-    org_id, team_node_id = _tenancy_from_request(request)
+async def update_memory_strategy(
+    strategy_id: str,
+    payload: dict,
+    auth: AgentAuthContext = Depends(_require_agent_auth),
+):
+    org_id, team_node_id = _tenancy_from_auth(auth)
     strategy_text = (payload.get("strategy_text") or "").strip()
     if not strategy_text:
         raise HTTPException(status_code=400, detail="strategy_text is required")
@@ -1349,8 +1374,11 @@ async def update_memory_strategy(request: Request, strategy_id: str, payload: di
 
 
 @app.delete("/memory/strategies/{strategy_id}")
-async def delete_memory_strategy(request: Request, strategy_id: str):
-    org_id, team_node_id = _tenancy_from_request(request)
+async def delete_memory_strategy(
+    strategy_id: str,
+    auth: AgentAuthContext = Depends(_require_agent_auth),
+):
+    org_id, team_node_id = _tenancy_from_auth(auth)
     store = EpisodeStore()
     ok = store.delete_strategy(
         strategy_id,

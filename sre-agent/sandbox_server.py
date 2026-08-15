@@ -24,14 +24,14 @@ Streams structured events via SSE (Server-Sent Events) for slack-bot consumption
 
 import asyncio
 import os
-import secrets
 
 # Add /app to path for imports
 import sys
 from typing import Dict, List, Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from agent_api_auth import AgentAuthContext, verify_agent_request_auth
+from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 sys.path.insert(0, "/app")
@@ -122,22 +122,15 @@ class ExecuteResponse(BaseModel):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint.
-
-    Returns claim status for warm pool sandboxes.
-    A sandbox is 'claimed' when JWT has been injected via /claim endpoint.
-    """
-    from pathlib import Path
-
-    jwt_path = Path("/tmp/sandbox-jwt")
-    claimed = jwt_path.exists() and jwt_path.read_text().strip() != ""
-
+    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "opensre-sandbox",
-        "active_sessions": len(_sessions),
-        "claimed": claimed,
     }
+
+
+def _require_sandbox_auth(request: Request) -> AgentAuthContext:
+    return verify_agent_request_auth(request)
 
 
 @app.get("/sessions")
@@ -151,8 +144,17 @@ async def list_sessions():
     }
 
 
-_CLAIM_AUTH_TOKEN = os.getenv("INVESTIGATE_AUTH_TOKEN", "")
 _claim_lock = asyncio.Lock()
+
+
+def _verify_claim_auth(raw_request: Request) -> None:
+    from agent_api_auth import agent_auth_disabled
+
+    if agent_auth_disabled():
+        return
+    auth = verify_agent_request_auth(raw_request)
+    if not auth.is_service_token:
+        raise HTTPException(status_code=403, detail="Invalid service token")
 
 
 @app.post("/claim")
@@ -171,14 +173,8 @@ async def claim_sandbox(request: ClaimRequest, raw_request: Request):
     import stat
     from pathlib import Path
 
-    # Require service-to-service auth (same token as /investigate)
-    if _CLAIM_AUTH_TOKEN:
-        auth_header = raw_request.headers.get("authorization", "")
-        if not auth_header.lower().startswith("bearer "):
-            raise HTTPException(status_code=401, detail="Missing Authorization header")
-        token = auth_header.split(" ", 1)[1].strip()
-        if not secrets.compare_digest(token, _CLAIM_AUTH_TOKEN):
-            raise HTTPException(status_code=403, detail="Invalid service token")
+    # Require service-to-service auth (same token as /execute)
+    _verify_claim_auth(raw_request)
 
     jwt_path = Path("/tmp/sandbox-jwt")
 
@@ -425,7 +421,10 @@ def _download_files_from_proxy(
 
 
 @app.post("/execute")
-async def execute(request: ExecuteRequest):
+async def execute(
+    request: ExecuteRequest,
+    _auth: AgentAuthContext = Depends(_require_sandbox_auth),
+):
     """
     Execute an investigation agent with the given prompt (streaming SSE).
 
@@ -550,7 +549,10 @@ async def execute(request: ExecuteRequest):
 
 
 @app.post("/interrupt")
-async def interrupt(request: InterruptRequest):
+async def interrupt(
+    request: InterruptRequest,
+    _auth: AgentAuthContext = Depends(_require_sandbox_auth),
+):
     """
     Interrupt the current execution and stop.
 
@@ -604,7 +606,10 @@ async def interrupt(request: InterruptRequest):
 
 
 @app.post("/answer")
-async def answer_question(request: AnswerRequest):
+async def answer_question(
+    request: AnswerRequest,
+    _auth: AgentAuthContext = Depends(_require_sandbox_auth),
+):
     """
     Receive answer to AskUserQuestion from main server.
     Wakes up the waiting can_use_tool callback in the agent session.

@@ -18,6 +18,12 @@ _TEMPLATE_PATH = os.path.join(
 )
 
 
+@pytest.fixture(autouse=True)
+def disable_agent_auth_for_tests(monkeypatch):
+    """Keep existing tests unauthenticated unless they opt into auth checks."""
+    monkeypatch.setenv("AGENT_AUTH_DISABLED", "true")
+
+
 @pytest.fixture
 def sample_team_config():
     """Load the POC incident-triage template into a TeamConfig for testing."""

@@ -96,16 +96,11 @@ def test_create_agent_run_uses_resolved_identity(monkeypatch):
     assert posted["body"]["team_node_id"] == "SRE"
 
 
-def test_memory_stats_resolves_tenancy_from_request_header(monkeypatch):
+def test_memory_stats_resolves_tenancy_from_auth(monkeypatch):
     monkeypatch.setenv("OPENSRE_TENANT_ID", "local")
     monkeypatch.setenv("OPENSRE_TEAM_ID", "default")
     import server_simple
-
-    tenancy_calls = []
-
-    def fake_tenancy(request):
-        tenancy_calls.append(request)
-        return "pilot", "SRE"
+    from agent_api_auth import AgentAuthContext
 
     cypher_params = {}
 
@@ -124,7 +119,16 @@ def test_memory_stats_resolves_tenancy_from_request_header(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    monkeypatch.setattr(server_simple, "_tenancy_from_request", fake_tenancy)
+    monkeypatch.setattr(
+        server_simple,
+        "verify_agent_request_auth",
+        lambda request: AgentAuthContext(
+            token="team-token-abc",
+            is_service_token=False,
+            org_id="pilot",
+            team_node_id="SRE",
+        ),
+    )
     monkeypatch.setattr(
         server_simple,
         "get_driver",
@@ -138,7 +142,6 @@ def test_memory_stats_resolves_tenancy_from_request_header(monkeypatch):
     )
 
     assert resp.status_code == 200
-    assert len(tenancy_calls) == 1
     assert cypher_params["org"] == "pilot"
     assert cypher_params["team"] == "SRE"
 

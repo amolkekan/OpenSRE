@@ -1079,13 +1079,19 @@ static_resources:
                             # via the sandbox-router (same path as execute_in_sandbox)
                             try:
                                 router_url = self.get_router_url()
+                                health_headers = {
+                                    "X-Sandbox-ID": sandbox_name,
+                                    "X-Sandbox-Port": "8888",
+                                    "X-Sandbox-Namespace": self.namespace,
+                                }
+                                auth_token = os.getenv("INVESTIGATE_AUTH_TOKEN", "")
+                                if auth_token:
+                                    health_headers["Authorization"] = (
+                                        f"Bearer {auth_token}"
+                                    )
                                 health_response = requests.get(
                                     f"{router_url}/health",
-                                    headers={
-                                        "X-Sandbox-ID": sandbox_name,
-                                        "X-Sandbox-Port": "8888",
-                                        "X-Sandbox-Namespace": self.namespace,
-                                    },
+                                    headers=health_headers,
                                     timeout=5,
                                 )
                                 if health_response.status_code == 200:
@@ -1158,6 +1164,9 @@ static_resources:
             "X-Sandbox-Port": "8888",
             "X-Sandbox-Namespace": self.namespace,
         }
+        auth_token = os.getenv("INVESTIGATE_AUTH_TOKEN", "")
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         payload = {"prompt": prompt, "thread_id": sandbox_info.thread_id}
 
@@ -1217,6 +1226,9 @@ static_resources:
             "X-Sandbox-Port": "8888",
             "X-Sandbox-Namespace": self.namespace,
         }
+        auth_token = os.getenv("INVESTIGATE_AUTH_TOKEN", "")
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         payload = {"thread_id": sandbox_info.thread_id}
 
@@ -1256,6 +1268,9 @@ static_resources:
             "X-Sandbox-Port": "8888",
             "X-Sandbox-Namespace": self.namespace,
         }
+        auth_token = os.getenv("INVESTIGATE_AUTH_TOKEN", "")
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         payload = {"thread_id": sandbox_info.thread_id, "answers": answers}
 
