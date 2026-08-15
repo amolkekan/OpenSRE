@@ -15,11 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.core.secret_redaction import (
-    redact_integration_config,
-    redact_slack_app_secrets,
-    redact_slack_installation_tokens,
-)
+from src.core.secret_redaction import redact_slack_app_secrets
 from src.db import repository
 from src.db.config_models import NodeConfiguration
 from src.db.config_repository import get_or_create_node_configuration

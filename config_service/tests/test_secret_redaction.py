@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 from src.core.secret_redaction import (
     MASK,
     is_masked_value,
+    is_sensitive_key,
     merge_config_preserving_secrets,
     redact_config_for_client_response,
     redact_integration_config,
@@ -27,6 +28,55 @@ def fernet_key():
     os.environ.pop("ENCRYPTION_KEY", None)
     os.environ.pop("ENCRYPTION_KEY_PREVIOUS", None)
     reset_encryption_service()
+
+
+def test_is_sensitive_key_preserves_token_counts():
+    assert not is_sensitive_key("max_tokens")
+    assert not is_sensitive_key("max_completion_tokens")
+    assert not is_sensitive_key("input_tokens")
+    assert not is_sensitive_key("output_tokens")
+
+    config = {"model": {"max_tokens": 16000, "temperature": 0.3}}
+    redacted = redact_secrets(config)
+    assert redacted["model"]["max_tokens"] == 16000
+    assert redacted["model"]["temperature"] == 0.3
+
+
+def test_is_sensitive_key_redacts_credential_tokens():
+    assert is_sensitive_key("bot_token")
+    assert is_sensitive_key("api_token")
+
+    config = {"bot_token": "xoxb-secret", "api_token": "ghp_secret123456"}
+    redacted = redact_secrets(config)
+    assert redacted["bot_token"].startswith(MASK)
+    assert redacted["api_token"].startswith(MASK)
+
+
+def test_is_sensitive_key_redacts_schema_secret_fields():
+    assert is_sensitive_key("app_key")
+    assert is_sensitive_key("service_account_key")
+    assert is_sensitive_key("service_account_json")
+
+    config = {
+        "integrations": {
+            "datadog": {
+                "app_key": "dd-app-key-secret1234",
+                "api_key": "dd-api-key-secret5678",
+            },
+            "gcp": {
+                "service_account_key": "-----BEGIN PRIVATE KEY-----",
+                "service_account_json": '{"type": "service_account"}',
+            },
+        }
+    }
+    redacted = redact_secrets(config)
+    datadog = redacted["integrations"]["datadog"]
+    gcp = redacted["integrations"]["gcp"]
+
+    assert datadog["app_key"].startswith(MASK)
+    assert datadog["api_key"].startswith(MASK)
+    assert gcp["service_account_key"].startswith(MASK)
+    assert gcp["service_account_json"].startswith(MASK)
 
 
 def test_redact_secrets_masks_sensitive_keys():

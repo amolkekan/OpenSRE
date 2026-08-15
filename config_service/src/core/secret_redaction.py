@@ -10,37 +10,56 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import Any, Dict, Iterable, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 MASK = "***"
 
-# Key substrings that indicate a secret value (aligned with encrypt_dict).
-SENSITIVE_KEY_TERMS: Set[str] = {
-    "token",
+# Exact key names (lowercase) that hold secret material.
+EXACT_SENSITIVE_KEYS: Set[str] = {
+    "access_key",
+    "api_key",
+    "app_key",
+    "bot_token",
+    "client_secret",
+    "password",
+    "private_key",
+    "refresh_token",
+    "service_account_json",
+    "service_account_key",
+    "session_cookie",
+    "signing_secret",
+    "webhook_url",
+}
+
+# Substrings that indicate secrets in compound key names.
+SENSITIVE_KEY_SUBSTRINGS: Set[str] = {
     "secret",
     "password",
     "webhook_url",
-    "api_key",
-    "bot_token",
-    "client_secret",
-    "private_key",
-    "signing_secret",
-    "access_key",
-    "refresh_token",
     "session_cookie",
 }
 
-# Keys that contain sensitive substrings but are not secret material.
+# Keys that resemble secrets but are config/metadata, not credentials.
 SENSITIVE_KEY_EXCEPTIONS: Set[str] = {
-    "token_expiry_days",
-    "token_warn_before_days",
-    "token_revoke_inactive_days",
+    "completion_tokens",
+    "input_tokens",
+    "key_algorithm",
     "key_id",
     "key_name",
-    "public_key",
     "key_type",
-    "key_algorithm",
+    "max_completion_tokens",
+    "max_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "public_key",
+    "token_expiry_days",
+    "token_revoke_inactive_days",
+    "token_warn_before_days",
+    "total_tokens",
 }
+
+# Singular credential token fields (_token / token_) — not token *counts* (_tokens).
+_TOKEN_FIELD_RE = re.compile(r"(^|_)token($|_)")
 
 _MASK_WITH_SUFFIX_RE = re.compile(r"^\*{3}(.+)?$")
 
@@ -50,7 +69,14 @@ def is_sensitive_key(key: str) -> bool:
     lowered = key.lower()
     if lowered in SENSITIVE_KEY_EXCEPTIONS:
         return False
-    return any(term in lowered for term in SENSITIVE_KEY_TERMS)
+    if lowered in EXACT_SENSITIVE_KEYS:
+        return True
+    # LLM usage counters (max_tokens, input_tokens, …) are never credentials.
+    if lowered.endswith("_tokens") or lowered == "tokens":
+        return False
+    if any(term in lowered for term in SENSITIVE_KEY_SUBSTRINGS):
+        return True
+    return bool(_TOKEN_FIELD_RE.search(lowered))
 
 
 def is_masked_value(value: Any) -> bool:

@@ -136,7 +136,8 @@ class EncryptionService:
         """
         Recursively encrypt sensitive values in a dictionary.
 
-        Encrypts values for keys containing: token, secret, key, password, webhook_url
+        Encrypts values for keys identified by ``is_sensitive_key`` in
+        ``secret_redaction`` (tokens, secrets, API keys, passwords, etc.).
 
         Args:
             data: Dictionary that may contain sensitive values
@@ -147,23 +148,12 @@ class EncryptionService:
         if not isinstance(data, dict):
             return data
 
+        from src.core.secret_redaction import is_sensitive_key
+
         encrypted = {}
-        sensitive_keys = {
-            "token",
-            "secret",
-            "key",
-            "password",
-            "webhook_url",
-            "api_key",
-            "bot_token",
-            "client_secret",
-            "private_key",
-            "signing_secret",
-        }
 
         for key, value in data.items():
-            # Check if key contains sensitive terms
-            is_sensitive = any(term in key.lower() for term in sensitive_keys)
+            is_sensitive = is_sensitive_key(key)
 
             if is_sensitive and isinstance(value, str) and value:
                 # Don't re-encrypt already encrypted values

@@ -46,6 +46,28 @@ def test_encrypt_empty_string():
     assert decrypt("") == ""
 
 
+def test_encrypt_dict_schema_secret_fields():
+    """Datadog/GCP schema secret fields are encrypted."""
+    from src.crypto import decrypt_dict, encrypt_dict
+
+    config = {
+        "app_key": "dd-app-secret",
+        "service_account_key": "-----BEGIN PRIVATE KEY-----",
+        "service_account_json": '{"type": "service_account"}',
+        "max_tokens": 16000,
+    }
+
+    encrypted = encrypt_dict(config)
+
+    assert encrypted["app_key"].startswith("fernet:")
+    assert encrypted["service_account_key"].startswith("fernet:")
+    assert encrypted["service_account_json"].startswith("fernet:")
+    assert encrypted["max_tokens"] == 16000
+
+    decrypted = decrypt_dict(encrypted)
+    assert decrypted == config
+
+
 def test_encrypt_dict_sensitive_keys():
     """Test dictionary encryption of sensitive keys."""
     from src.crypto import decrypt_dict, encrypt_dict
