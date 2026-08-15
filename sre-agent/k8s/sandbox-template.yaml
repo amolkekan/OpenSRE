@@ -29,6 +29,12 @@ spec:
           name: sandbox
         env:
         # Core credentials
+        - name: INVESTIGATE_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: opensre-investigate-auth
+              key: token
+              optional: true
         - name: ANTHROPIC_API_KEY
           valueFrom:
             secretKeyRef:

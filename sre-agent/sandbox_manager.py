@@ -567,6 +567,8 @@ static_resources:
 
         # Get credential-resolver namespace (used for both configmap and env vars)
         cred_resolver_ns = os.getenv("CREDENTIAL_RESOLVER_NAMESPACE", "opensre-prod")
+        # Must match Authorization the manager sends to router/sandbox APIs.
+        investigate_auth_token = os.getenv("INVESTIGATE_AUTH_TOKEN", "").strip()
 
         # Fetch configured integrations (non-sensitive metadata for system prompt)
         configured_integrations = fetch_configured_integrations(
@@ -642,6 +644,17 @@ static_resources:
                                 + (
                                     [{"name": "TEAM_TOKEN", "value": team_token}]
                                     if team_token
+                                    else []
+                                )
+                                # Shared service token so sandbox /execute|/claim auth matches the manager.
+                                + (
+                                    [
+                                        {
+                                            "name": "INVESTIGATE_AUTH_TOKEN",
+                                            "value": investigate_auth_token,
+                                        }
+                                    ]
+                                    if investigate_auth_token
                                     else []
                                 )
                                 + [

@@ -37,9 +37,19 @@ The router is a Python application built with FastAPI and Uvicorn.
 Use the provided `Dockerfile` to build and push the image to your container registry.
 
 ```bash
+# Build from the sre-agent/ directory (Dockerfile COPY paths are relative to that context).
 export SANDBOX_ROUTER_IMG=your_registry_path/sandbox-router:latest
-docker build -t $SANDBOX_ROUTER_IMG .
+cd /path/to/OpenSRE/sre-agent
+docker build -f sandbox-router/Dockerfile -t $SANDBOX_ROUTER_IMG .
 docker push $SANDBOX_ROUTER_IMG
+```
+
+Create a Secret so the router can validate `Authorization` from the orchestrator (same value as sre-agent `INVESTIGATE_AUTH_TOKEN`):
+
+```bash
+kubectl create secret generic opensre-investigate-auth \
+  --from-literal=token="$INVESTIGATE_AUTH_TOKEN" \
+  -n <sandbox-namespace>
 ```
 
 ## Deployment

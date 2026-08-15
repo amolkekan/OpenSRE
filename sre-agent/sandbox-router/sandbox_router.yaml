@@ -42,6 +42,15 @@ spec:
         image: IMAGE_PLACEHOLDER
         ports:
         - containerPort: 8080
+        # Must match INVESTIGATE_AUTH_TOKEN on the sre-agent orchestrator and sandbox pods.
+        # Prefer a Secret in production; literal value is for reference installs only.
+        env:
+        - name: INVESTIGATE_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: opensre-investigate-auth
+              key: token
+              optional: true
         readinessProbe:
           httpGet:
             path: /healthz

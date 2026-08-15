@@ -47,6 +47,13 @@ spec:
           value: "unclaimed"
         - name: THREAD_ID
           value: "unclaimed"
+        # Shared with orchestrator/router for /claim and /execute auth
+        - name: INVESTIGATE_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: opensre-investigate-auth
+              key: token
+              optional: true
         # Claude SDK: route API requests through Envoy proxy
         - name: ANTHROPIC_BASE_URL
           value: "http://localhost:8001"
