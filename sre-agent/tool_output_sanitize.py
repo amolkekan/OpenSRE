@@ -60,11 +60,22 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"), _REDACTED),
     (re.compile(r"\bxox[baprs]-[0-9a-zA-Z\-]{10,}\b"), _REDACTED),
     (re.compile(r"\bATATT[A-Za-z0-9_\-]{20,}\b"), _REDACTED),
-    (re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"), _REDACTED),
-    # Generic api_key / secret / token / password assignments.
+    # sk-* vendor keys (Anthropic sk-ant-api03-…, OpenAI sk-proj-…, etc.).
+    (re.compile(r"\bsk-[A-Za-z0-9\-]{20,}\b"), _REDACTED),
+    # JSON object keys: "token": "…", "api_key" : "…" (whitespace around ':').
     (
         re.compile(
-            r"(?i)(api[_-]?key|apikey|secret|token|password|passwd|pwd|auth)\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?",
+            r'(?i)("(?:token|api[_-]?key|api-key|password|secret|access[_-]?key|authorization)")\s*:\s*"[^"]*"',
+        ),
+        r'\1: "' + _REDACTED + '"',
+    ),
+    # Generic key=value / key: value assignments (word-boundary keys only).
+    (
+        re.compile(
+            r"(?i)\b("
+            r"api[_-]?key|apikey|access[_-]?key|access[_-]?token|"
+            r"client[_-]?secret|secret|token|password|passwd"
+            r")\b\s*[:=]\s*['\"]?[^\s'\"]{8,}['\"]?",
         ),
         r"\1=" + _REDACTED,
     ),

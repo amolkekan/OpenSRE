@@ -153,3 +153,63 @@ def test_tool_start_event_redacts_command_in_sse_payload():
     assert secret not in evt.data["command"]
     assert "<redacted>" in evt.data["command"]
     assert secret not in json.dumps(evt.data["input"])
+
+
+def test_json_quoted_token_key_redacted():
+    secret = "supersecretvalue12345"
+    body = json.dumps({"token": secret, "status": "ok"})
+    sanitized, _ = sanitize_tool_end_payload("Read", None, body, None)
+    assert secret not in sanitized
+    assert '"token": "<redacted>"' in sanitized
+    assert '"status": "ok"' in sanitized
+
+
+def test_json_quoted_keys_with_whitespace_redacted():
+    secret = "my-api-key-value12345"
+    body = '{"api_key" : "' + secret + '", "password": "hunter2pass"}'
+    sanitized, _ = sanitize_tool_end_payload("Read", None, body, None)
+    assert secret not in sanitized
+    assert "hunter2pass" not in sanitized
+    assert '"api_key": "<redacted>"' in sanitized
+    assert '"password": "<redacted>"' in sanitized
+
+
+def test_json_quoted_secrets_inside_sdk_bash_wrapper():
+    secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz"
+    inner = json.dumps({"token": secret, "api-key": "anothersecret123"})
+    wrapper = {"stdout": inner, "stderr": "", "returncode": 0}
+    raw = json.dumps(wrapper)
+    sanitized = sanitize_bash_output("curl https://api.example.com", raw)
+    parsed = json.loads(sanitized)
+    assert secret not in parsed["stdout"]
+    assert "anothersecret123" not in parsed["stdout"]
+    assert '"token": "<redacted>"' in parsed["stdout"]
+    assert '"api-key": "<redacted>"' in parsed["stdout"]
+
+
+def test_sk_hyphenated_vendor_keys_redacted():
+    anthropic = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456"
+    openai = "sk-proj-abcdefghijklmnopqrstuvwxyz123456"
+    for key in (anthropic, openai):
+        sanitized, _ = sanitize_tool_end_payload("Read", None, f"key={key}", None)
+        assert key not in sanitized
+        assert "<redacted>" in sanitized
+
+
+def test_oauth_label_not_over_redacted():
+    output = "oauth: github-enterprise"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+    assert sanitized == output
+
+
+def test_current_pwd_label_not_over_redacted():
+    output = "current pwd: /Users/foo/project"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+    assert sanitized == output
+
+
+def test_invalid_token_message_redacted():
+    output = "invalid token: expected-claim-missing"
+    sanitized, _ = sanitize_tool_end_payload("Read", None, output, None)
+    assert "expected-claim-missing" not in sanitized
+    assert "token=<redacted>" in sanitized
