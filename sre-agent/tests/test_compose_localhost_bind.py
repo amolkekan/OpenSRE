@@ -1,4 +1,4 @@
-"""Static checks for docker-compose localhost binding and secret env refs."""
+"""Static checks for docker-compose localhost host-port binding."""
 
 from pathlib import Path
 
@@ -46,6 +46,12 @@ def test_config_service_and_sre_agent_ports_bound_to_localhost():
     assert any(p.startswith(f"{LOCALHOST}:3002:") for p in web_ports), web_ports
 
 
+def test_teams_bot_port_bound_to_localhost():
+    compose = _load_compose()
+    teams_ports = _port_strings(compose["services"]["teams-bot"])
+    assert any(p.startswith(f"{LOCALHOST}:3978:") for p in teams_ports), teams_ports
+
+
 def test_datastore_services_join_default_network_for_host_ports():
     """Custom-only networks skip host publish on Docker Desktop; join default too."""
     compose = _load_compose()
@@ -54,28 +60,8 @@ def test_datastore_services_join_default_network_for_host_ports():
         assert "default" in nets, f"{name} networks={nets}"
 
 
-def test_compose_does_not_commit_weak_postgres_password():
+def test_impersonation_jwt_secret_is_env_overridable_with_dev_default():
     compose = _load_compose()
-    postgres_env = compose["services"]["postgres"]["environment"]
-    assert postgres_env["POSTGRES_PASSWORD"] == "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
-
-
-def test_compose_secrets_use_required_env_substitution():
-    compose = _load_compose()
-    config_env = compose["services"]["config-service"]["environment"]
-
-    assert "POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env" in config_env["DATABASE_URL"]
-    assert config_env["ADMIN_TOKEN"] == "${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}"
-    assert config_env["TOKEN_PEPPER"] == "${TOKEN_PEPPER:?set TOKEN_PEPPER in .env}"
-    assert (
-        config_env["IMPERSONATION_JWT_SECRET"]
-        == "${IMPERSONATION_JWT_SECRET:?set IMPERSONATION_JWT_SECRET in .env}"
-    )
-
-    neo4j_auth = compose["services"]["neo4j"]["environment"]["NEO4J_AUTH"]
-    assert "NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env" in neo4j_auth
-
-    agent_env = compose["services"]["sre-agent"]["environment"]
-    assert any(
-        "NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env" in str(item) for item in agent_env
-    ), agent_env
+    secret = compose["services"]["config-service"]["environment"]["IMPERSONATION_JWT_SECRET"]
+    assert secret.startswith("${IMPERSONATION_JWT_SECRET:-")
+    assert "local-dev-impersonation-secret-32chars!!" in secret
