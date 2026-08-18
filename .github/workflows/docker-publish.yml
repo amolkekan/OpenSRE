@@ -1,8 +1,8 @@
 # Build and push multi-arch images to Docker Hub on version tags.
 # Public repo only (swapnildahiphale/OpenSRE). Secrets stay on this repo.
 #
-# Action pins use full commit SHAs (supply-chain hardening). Provenance
-# attestation (e.g. build-push-action provenance: true) is a follow-up.
+# Action pins use full commit SHAs (supply-chain hardening). Provenance is
+# attached on publish via build-push provenance and attest-build-provenance.
 #
 # Required secrets:
 #   DOCKERHUB_USERNAME — Docker Hub username (swapnildahiphale)
@@ -23,7 +23,8 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  id-token: write
+  attestations: write
 
 env:
   DOCKERHUB_NAMESPACE: swapnildahiphale
@@ -85,14 +86,23 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ./${{ matrix.context }}
           file: ./${{ matrix.context }}/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.image }}:${{ steps.meta.outputs.tag }}
             ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.image }}:latest
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
