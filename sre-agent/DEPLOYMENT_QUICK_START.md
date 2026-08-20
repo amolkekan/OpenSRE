@@ -48,10 +48,9 @@ gh workflow run deploy-eks.yml -f environment=staging -f services=agent
 
 ### Manual Helm Deploy
 ```bash
-aws eks update-kubeconfig --name opensre-demo --region us-west-2
 cd charts
 helm upgrade --install opensre ./opensre \
-  -n opensre -f opensre/values.staging.yaml --timeout 5m
+  -n opensre -f opensre/values.self-hosted-simple.yaml --timeout 5m
 kubectl rollout restart deployment/opensre-agent -n opensre
 ```
 
@@ -77,7 +76,7 @@ docker compose up -d
 
 ## Architecture
 
-- **Helm charts**: `charts/opensre/` (staging: `values.staging.yaml`, prod: `values.prod.yaml`)
+- **Helm charts**: `charts/opensre/` (self-hosted: `values.self-hosted-simple.yaml`)
 - **CI/CD**: `.github/workflows/deploy-eks.yml` builds all services and deploys via Helm
 - **Agent image**: Built from `sre-agent/Dockerfile`, pushed to ECR as `opensre-agent`
 - **Local dev**: Kind cluster with `make dev` (uses `sre-agent/scripts/`)

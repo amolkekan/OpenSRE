@@ -34,7 +34,7 @@ spec:
       containers:
       # Main agent container
       - name: agent
-        image: 654654426408.dkr.ecr.us-west-2.amazonaws.com/opensre/opensre-agent:latest
+        image: swapnildahiphale/opensre-sre-agent:v1.2.0
         imagePullPolicy: Always
         ports:
         - containerPort: 8888

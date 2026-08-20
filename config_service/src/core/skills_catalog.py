@@ -299,7 +299,7 @@ BUILT_IN_SKILLS_METADATA = [
     {
         "id": "platform-kronos",
         "name": "Platform Kronos",
-        "description": "Kronos env lifecycle — list/check environments, scale up, shut down, and manage recurring schedules. Use when a user asks if a HIX/CCX env is supposed to be up/down, or wants OpenSRE to start/stop/schedule an env. Do NOT use for pod logs, replicas detail, or Argo sync (use kubernetes and ArgoCD skills).",
+        "description": "Kronos env lifecycle — list/check environments, scale up, shut down, and manage recurring schedules. Use when a user asks if a scheduled environment is supposed to be up/down, or wants OpenSRE to start/stop/schedule an env. Do NOT use for pod logs, replicas detail, or Argo sync (use kubernetes and ArgoCD skills).",
         "category": "Other Integrations",
         "required_integrations": ["kronos"],
     },
