@@ -172,13 +172,15 @@ OpenSRE is built on top of proven open-source technologies:
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=swapnildahiphale%2FOpenSRE&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=swapnildahiphale/OpenSRE&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=swapnildahiphale/OpenSRE&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=swapnildahiphale/OpenSRE&type=date&legend=top-left" />
- </picture>
-</a>
+<p align="center">
+  <a href="https://github.com/swapnildahiphale/OpenSRE/stargazers">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset=".github/assets/star-history-light.svg" />
+      <img alt="OpenSRE GitHub star history — 112 stars as of 31 Aug 2026" src=".github/assets/star-history-light.svg" width="800" />
+    </picture>
+  </a>
+</p>
 
 ## Contributing
 
