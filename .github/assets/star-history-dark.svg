@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="320" viewBox="0 0 800 320" role="img" aria-label="OpenSRE GitHub star history, 112 stars as of 2026-08-31">
+  <title>OpenSRE star history</title>
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <text x="56" y="24" fill="#94a3b8" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="12">Star history</text>
+  <text x="56" y="44" fill="#f8fafc" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="22" font-weight="600">112 stars</text>
+  <text x="764" y="44" fill="#94a3b8" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="12" text-anchor="end">as of 31 Aug 2026</text>
+  <g font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">
+    <line x1="56" y1="276.0" x2="764" y2="276.0" stroke="#1e293b" stroke-width="1"/><text x="46" y="276.0" fill="#475569" font-size="11" text-anchor="end" dominant-baseline="middle">0</text><line x1="56" y1="224.0" x2="764" y2="224.0" stroke="#1e293b" stroke-width="1"/><text x="46" y="224.0" fill="#475569" font-size="11" text-anchor="end" dominant-baseline="middle">30</text><line x1="56" y1="172.0" x2="764" y2="172.0" stroke="#1e293b" stroke-width="1"/><text x="46" y="172.0" fill="#475569" font-size="11" text-anchor="end" dominant-baseline="middle">60</text><line x1="56" y1="120.0" x2="764" y2="120.0" stroke="#1e293b" stroke-width="1"/><text x="46" y="120.0" fill="#475569" font-size="11" text-anchor="end" dominant-baseline="middle">90</text><line x1="56" y1="68.0" x2="764" y2="68.0" stroke="#1e293b" stroke-width="1"/><text x="46" y="68.0" fill="#475569" font-size="11" text-anchor="end" dominant-baseline="middle">120</text>
+    <text x="56.0" y="304" fill="#475569" font-size="11" text-anchor="middle">Apr</text><text x="192.0" y="304" fill="#475569" font-size="11" text-anchor="middle">May</text><text x="337.3" y="304" fill="#475569" font-size="11" text-anchor="middle">Jun</text><text x="478.0" y="304" fill="#475569" font-size="11" text-anchor="middle">Jul</text><text x="623.3" y="304" fill="#475569" font-size="11" text-anchor="middle">Aug</text>
+  </g>
+  <defs>
+    <linearGradient id="fill-dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M56.0,274.3 L60.7,272.5 L79.4,270.8 L84.1,265.6 L107.6,258.7 L112.3,241.3 L117.0,237.9 L121.6,232.7 L126.3,229.2 L131.0,224.0 L135.7,222.3 L140.4,217.1 L145.1,215.3 L149.8,211.9 L154.5,210.1 L163.8,206.7 L182.6,204.9 L187.3,198.0 L192.0,194.5 L201.4,191.1 L210.7,189.3 L220.1,185.9 L238.9,178.9 L243.5,177.2 L281.1,175.5 L285.7,173.7 L290.4,172.0 L295.1,170.3 L313.9,166.8 L318.6,165.1 L327.9,163.3 L337.3,161.6 L346.7,159.9 L356.1,156.4 L379.5,152.9 L384.2,147.7 L398.3,146.0 L403.0,142.5 L412.3,140.8 L435.8,139.1 L440.5,137.3 L473.3,133.9 L478.0,132.1 L482.7,130.4 L487.4,125.2 L510.8,121.7 L515.5,120.0 L520.2,118.3 L543.6,116.5 L548.3,113.1 L576.5,111.3 L581.1,107.9 L590.5,106.1 L599.9,104.4 L604.6,102.7 L628.0,100.9 L632.7,97.5 L642.1,95.7 L651.5,94.0 L665.5,92.3 L670.2,90.5 L679.6,88.8 L712.4,87.1 L721.8,83.6 L740.6,81.9 L764.0,81.9 L764.0,276.0 L56.0,276.0 Z" fill="url(#fill-dark)"/>
+  <path d="M56.0,274.3 L60.7,272.5 L79.4,270.8 L84.1,265.6 L107.6,258.7 L112.3,241.3 L117.0,237.9 L121.6,232.7 L126.3,229.2 L131.0,224.0 L135.7,222.3 L140.4,217.1 L145.1,215.3 L149.8,211.9 L154.5,210.1 L163.8,206.7 L182.6,204.9 L187.3,198.0 L192.0,194.5 L201.4,191.1 L210.7,189.3 L220.1,185.9 L238.9,178.9 L243.5,177.2 L281.1,175.5 L285.7,173.7 L290.4,172.0 L295.1,170.3 L313.9,166.8 L318.6,165.1 L327.9,163.3 L337.3,161.6 L346.7,159.9 L356.1,156.4 L379.5,152.9 L384.2,147.7 L398.3,146.0 L403.0,142.5 L412.3,140.8 L435.8,139.1 L440.5,137.3 L473.3,133.9 L478.0,132.1 L482.7,130.4 L487.4,125.2 L510.8,121.7 L515.5,120.0 L520.2,118.3 L543.6,116.5 L548.3,113.1 L576.5,111.3 L581.1,107.9 L590.5,106.1 L599.9,104.4 L604.6,102.7 L628.0,100.9 L632.7,97.5 L642.1,95.7 L651.5,94.0 L665.5,92.3 L670.2,90.5 L679.6,88.8 L712.4,87.1 L721.8,83.6 L740.6,81.9 L764.0,81.9" fill="none" stroke="#34d399" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="764.0" cy="81.9" r="7" fill="#064e3b"/>
+  <circle cx="764.0" cy="81.9" r="4" fill="#34d399"/>
+</svg>
